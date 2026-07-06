@@ -25,7 +25,7 @@ Usage:
 
 import os
 import time
-from typing import Dict, List, Set, Tuple
+from typing import Dict, List, Tuple
 
 import pandas as pd
 from langchain_community.vectorstores import FAISS
@@ -34,6 +34,7 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from rich.console import Console
 
 from ragtune.adapters.langchain import LangChainRetriever
+from ragtune.data.loaders.CRUMBLoader import CRUMBLoader, CRUMB_TASKS
 from ragtune.evaluation.RetrievalEvaluator import RetrievalEvaluator
 from ragtune.components.assemblers import GreedyAssembler
 from ragtune.components.estimators import BaselineEstimator, SimilarityEstimator
@@ -52,19 +53,6 @@ def print_success(msg): _console.print(f"[bold green]{msg}[/bold green]")
 _evaluator = RetrievalEvaluator(k_values=[10, 50])
 
 # --- Configuration ---
-
-DATASET_ID = "jfkback/crumb"
-
-ALL_TASKS = [
-    "paper_retrieval",
-    "theorem_retrieval",
-    "tip_of_the_tongue",
-    "stack_exchange",
-    "clinical_trial",
-    "set_operation_entity_retrieval",
-    "code_retrieval",
-    "legal_qa",
-]
 
 TASKS: List[str] = os.environ.get("CRUMB_TASKS", "paper_retrieval,theorem_retrieval,stack_exchange").split(",")
 QUERIES_PER_TASK: int = int(os.environ.get("CRUMB_QUERIES", "20"))
@@ -91,57 +79,18 @@ _reranker = _OracleReranker()
 # --- Data Loading ---
 
 def load_task(task: str) -> Tuple[
-    Dict[str, str],             # corpus: {passage_id: text}
+    Dict[str, str],             # corpus: {passage_id: {"text": str, "title": str}}
     Dict[str, str],             # queries: {query_id: query_text}
     Dict[str, Dict[str, int]],  # qrels:   {query_id: {passage_id: label}}
 ]:
-    """
-    Loads passage corpus, queries, and passage-level qrels for a CRUMB task.
-    Qrels are embedded in the query rows (passage_qrels field) — no separate file needed.
-    """
-    try:
-        from datasets import load_dataset
-    except ImportError:
-        raise ImportError(
-            "Required package missing. Install with:\n"
-            "  pip install datasets\n"
-            "Or: pip install -e '.[benchmarks]'"
-        )
-
-    # 1. Queries + embedded passage qrels
-    print_step(f"Loading queries [{task}]...")
-    query_rows = list(load_dataset(DATASET_ID, "evaluation_queries", split=task))[:QUERIES_PER_TASK]
-
-    queries: Dict[str, str] = {}
-    qrels: Dict[str, Dict[str, int]] = {}
-    for row in query_rows:
-        qid = row["query_id"]
-        queries[qid] = row["query_content"]
-        pqrels = row.get("passage_qrels") or []
-        qrels[qid] = {
-            entry["id"]: int(entry["label"])
-            for entry in pqrels
-            if int(entry["label"]) > 0
-        }
-
-    # 2. Passage corpus — streamed, capped at MAX_CORPUS_DOCS but gold passages always included
-    gold_ids: Set[str] = {pid for doc_scores in qrels.values() for pid in doc_scores}
-    print_step(f"Streaming passage corpus [{task}] (cap={MAX_CORPUS_DOCS}, gold={len(gold_ids)})...")
-
-    corpus: Dict[str, str] = {}
-    non_gold_count = 0
-    corpus_ds = load_dataset(DATASET_ID, "passage_corpus", split=task, streaming=True)
-    for row in corpus_ds:
-        pid = row["document_id"]
-        is_gold = pid in gold_ids
-        if is_gold or non_gold_count < MAX_CORPUS_DOCS:
-            corpus[pid] = row["document_content"]
-            if not is_gold:
-                non_gold_count += 1
-        if non_gold_count >= MAX_CORPUS_DOCS and gold_ids.issubset(corpus):
-            break
-
-    return corpus, queries, qrels
+    """Loads corpus, queries, and qrels via CRUMBLoader."""
+    print_step(f"Loading [{task}] via CRUMBLoader...")
+    loader = CRUMBLoader(
+        task=task,
+        max_queries=QUERIES_PER_TASK,
+        max_corpus_docs=MAX_CORPUS_DOCS,
+    )
+    return loader.get_corpus(), loader.get_queries(), loader.get_qrels()
 
 
 # --- Index Building ---
@@ -152,7 +101,8 @@ def build_retriever(
 ) -> Tuple[LangChainRetriever, FAISS]:
     """Builds a FAISS index over the passage corpus."""
     lc_docs = [
-        Document(page_content=text, metadata={"id": pid})
+        Document(page_content=text if isinstance(text, str) else text.get("text", ""),
+                 metadata={"id": pid})
         for pid, text in corpus.items()
     ]
     print_step(f"Indexing {len(lc_docs)} passages...")
@@ -282,10 +232,10 @@ def main():
     all_rows: List[Dict] = []
 
     for task in TASKS:
-        if task not in ALL_TASKS:
+        if task not in CRUMB_TASKS:
             _console.print(
                 f"[yellow]Unknown task '{task}', skipping. "
-                f"Valid: {ALL_TASKS}[/yellow]"
+                f"Valid: {CRUMB_TASKS}[/yellow]"
             )
             continue
 
