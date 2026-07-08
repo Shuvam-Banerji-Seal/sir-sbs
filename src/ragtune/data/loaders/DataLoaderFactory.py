@@ -1,6 +1,6 @@
 """
 DataLoader Factory
-==================
+=================
 Maps (benchmark, dataset) pairs to the appropriate loader class.
 
 This is the single registration point – adding a new benchmark means
@@ -10,7 +10,7 @@ adding one branch here and implementing a BaseDataLoader subclass.
 import logging
 from typing import Optional
 
-from src.ragtune.data.constants import (
+from ragtune.data.constants import (
     Benchmark,
     Dataset,
     BRIGHT_TASKS,
@@ -65,7 +65,7 @@ class DataLoaderFactory:
 
         # ---- BRIGHT ----
         if benchmark_name == Benchmark.BRIGHT or dataset_name in BRIGHT_TASKS:
-            from src.ragtune.data.loaders.BRIGHTLoader import BRIGHTLoader
+            from ragtune.data.loaders.BRIGHTLoader import BRIGHTLoader
 
             task = dataset_name
             logger.info(f"[Factory] Creating BRIGHTLoader(task={task!r})")
@@ -82,7 +82,7 @@ class DataLoaderFactory:
             benchmark_name == Benchmark.FRESHSTACK.upper()
             or dataset_name in FRESHSTACK_TOPICS
         ):
-            from src.ragtune.data.loaders.FreshStackLoader import FreshStackLoader
+            from ragtune.data.loaders.FreshStackLoader import FreshStackLoader
 
             logger.info(f"[Factory] Creating FreshStackLoader(topic={dataset_name!r})")
             return FreshStackLoader(
@@ -95,7 +95,7 @@ class DataLoaderFactory:
         if benchmark_name == Benchmark.BEIR.upper():
             hf_name = kwargs.pop("hf_dataset_name", f"mteb/{dataset_name}")
             subset = kwargs.pop("subset", None)
-            from src.ragtune.data.loaders.HuggingFaceLoader import HuggingFaceLoader
+            from ragtune.data.loaders.HuggingFaceLoader import HuggingFaceLoader
 
             logger.info(
                 f"[Factory] Creating HuggingFaceLoader for BEIR "
@@ -161,7 +161,7 @@ class DataLoaderFactory:
             f"[Factory] Unknown benchmark={benchmark_name!r} for dataset={dataset_name!r}. "
             "Attempting IRDatasetsLoader as fallback."
         )
-        from src.ragtune.data.loaders.IRDatasetsLoader import IRDatasetsLoader
+        from ragtune.data.loaders.IRDatasetsLoader import IRDatasetsLoader
 
         return IRDatasetsLoader(
             dataset_id=dataset_name,
