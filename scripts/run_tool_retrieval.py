@@ -18,8 +18,8 @@ from typing import Dict, List, Tuple
 import pandas as pd
 from rich.console import Console
 
-from ragtune.data.loaders import ToolRetLoader, SkillRetLoader, SRABenchLoader
-from ragtune.data.constants import TOOLRET_SUBSETS, SRA_BENCH_SUBSETS
+from ragtune.data.loaders import DataLoaderFactory
+from ragtune.data.constants import Benchmark, TOOLRET_SUBSETS, SRA_BENCH_SUBSETS
 from ragtune.evaluation.RetrievalEvaluator import RetrievalEvaluator
 from ragtune.components.assemblers import GreedyAssembler
 from ragtune.components.estimators import BaselineEstimator, SimilarityEstimator
@@ -45,14 +45,15 @@ def print_success(msg):
     _console.print(f"[bold green]{msg}[/bold green]")
 
 
-_evaluator = RetrievalEvaluator(k_values=[10])
-
 # --- Configuration (via environment variables) ---
 
 BENCHMARK: str = os.environ.get("BENCHMARK", "toolret")  # toolret, skillret, sra
 SUBSET: str = os.environ.get("SUBSET", "")  # specific subset name
-QUERIES_PER_TASK: int = int(os.environ.get("QUERIES", "20"))
+QUERIES_PER_TASK: int = int(os.environ.get("QUERIES", "0"))  # 0 = all
 CANDIDATES_TOP_K: int = int(os.environ.get("TOP_K", "100"))
+EVAL_K: int = int(os.environ.get("EVAL_K", "10"))  # NDCG@k cutoff
+
+_evaluator = RetrievalEvaluator(k_values=[EVAL_K])
 
 # --- Data Loading ---
 
@@ -64,16 +65,21 @@ def load_task(
     Dict[str, str],  # queries: {query_id: query_text}
     Dict[str, Dict[str, int]],  # qrels:   {query_id: {doc_id: label}}
 ]:
-    """Loads corpus, queries, and qrels via the appropriate loader."""
+    """Loads corpus, queries, and qrels via DataLoaderFactory."""
     print_step(f"Loading [{benchmark}] {subset}...")
-    if benchmark == "toolret":
-        loader = ToolRetLoader(dataset=subset, n_queries=QUERIES_PER_TASK)
-    elif benchmark == "skillret":
-        loader = SkillRetLoader(dataset=subset, n_queries=QUERIES_PER_TASK)
-    elif benchmark == "sra":
-        loader = SRABenchLoader(dataset=subset, n_queries=QUERIES_PER_TASK)
-    else:
+    benchmark_name = {
+        "toolret": Benchmark.TOOLRET,
+        "skillret": Benchmark.SKILLRET,
+        "sra": Benchmark.SRA_BENCH,
+    }.get(benchmark)
+    if benchmark_name is None:
         raise ValueError(f"Unknown benchmark: {benchmark}")
+    factory = DataLoaderFactory()
+    loader = factory.create_dataloader(
+        dataset_name=subset,
+        benchmark_name=benchmark_name,
+        n_queries=QUERIES_PER_TASK,
+    )
     return loader.get_corpus(), loader.get_queries(), loader.get_qrels()
 
 
