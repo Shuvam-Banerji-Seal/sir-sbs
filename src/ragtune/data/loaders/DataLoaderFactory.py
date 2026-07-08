@@ -114,20 +114,28 @@ class DataLoaderFactory:
             benchmark_name == Benchmark.TOOLRET.upper()
             or dataset_name in TOOLRET_SUBSETS
         ):
-            from src.ragtune.data.loaders.ToolRetLoader import ToolRetLoader
+            from ragtune.data.loaders.ToolRetLoader import ToolRetLoader
 
-            n_queries = kwargs.pop("n_queries", 50)
+            n_queries = kwargs.pop("n_queries", 0)
             logger.info(f"[Factory] Creating ToolRetLoader(dataset={dataset_name!r})")
-            return ToolRetLoader(dataset=dataset_name, split=split, n_queries=n_queries)
+            return ToolRetLoader(
+                dataset=dataset_name,
+                split=split,
+                n_queries=n_queries,
+                cache_dir=cache_dir,
+            )
 
         # ---- SkillRet ----
         if benchmark_name == Benchmark.SKILLRET.upper():
-            from src.ragtune.data.loaders.SkillRetLoader import SkillRetLoader
+            from ragtune.data.loaders.SkillRetLoader import SkillRetLoader
 
-            n_queries = kwargs.pop("n_queries", 50)
+            n_queries = kwargs.pop("n_queries", 0)
             logger.info(f"[Factory] Creating SkillRetLoader(split={dataset_name!r})")
             return SkillRetLoader(
-                dataset=dataset_name, split=split, n_queries=n_queries
+                dataset=dataset_name,
+                split=split,
+                n_queries=n_queries,
+                cache_dir=cache_dir,
             )
 
         # ---- SRA-Bench ----
@@ -135,12 +143,15 @@ class DataLoaderFactory:
             benchmark_name == Benchmark.SRA_BENCH.upper()
             or dataset_name in SRA_BENCH_SUBSETS
         ):
-            from src.ragtune.data.loaders.SRABenchLoader import SRABenchLoader
+            from ragtune.data.loaders.SRABenchLoader import SRABenchLoader
 
-            n_queries = kwargs.pop("n_queries", 50)
+            n_queries = kwargs.pop("n_queries", 0)
             logger.info(f"[Factory] Creating SRABenchLoader(dataset={dataset_name!r})")
             return SRABenchLoader(
-                dataset=dataset_name, split=split, n_queries=n_queries
+                dataset=dataset_name,
+                split=split,
+                n_queries=n_queries,
+                cache_dir=cache_dir,
             )
 
         # ---- ir_datasets fallback ----

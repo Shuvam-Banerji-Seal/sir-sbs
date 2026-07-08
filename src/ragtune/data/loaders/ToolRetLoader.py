@@ -111,7 +111,7 @@ class ToolRetLoader(BaseDataLoader):
                     if isinstance(doc, str):
                         try:
                             doc = _json.loads(doc)
-                        except:
+                        except (_json.JSONDecodeError, ValueError):
                             pass
                     tool_map[row["id"]] = _flatten_tool_doc(doc)
             except Exception as e:

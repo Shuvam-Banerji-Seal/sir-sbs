@@ -122,6 +122,12 @@ class SkillRetLoader(BaseDataLoader):
                 if self.n_queries > 0 and len(self._queries) >= self.n_queries:
                     break
 
+        # ---- Filter qrels to loaded queries only ----
+        loaded_qids = set(self._queries.keys())
+        self._qrels = {
+            qid: rels for qid, rels in self._qrels.items() if qid in loaded_qids
+        }
+
         # ---- Build raw_data ----
         query_objs: Dict[str, Query] = {}
         for qid, text in self._queries.items():
