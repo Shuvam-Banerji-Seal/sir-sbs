@@ -125,23 +125,12 @@ class SRABenchLoader(BaseDataLoader):
                 break
 
         # ---- Build raw_data ----
+        from ragtune.data.loaders.HuggingFaceLoader import build_raw_data
+
         query_objs: Dict[str, Query] = {}
         for qid, text in self._queries.items():
             query_objs[qid] = Query(text=text, idx=qid)
-
-        for qid, rels in self._qrels.items():
-            if qid not in query_objs:
-                continue
-            for doc_id in rels:
-                if doc_id in self._corpus:
-                    ctx = Context(text=self._corpus[doc_id]["text"], idx=doc_id)
-                    self.raw_data.append(
-                        Sample(
-                            idx=qid,
-                            query=query_objs[qid],
-                            evidences=ctx,
-                        )
-                    )
+        build_raw_data(self.raw_data, query_objs, self._qrels, self._corpus)
 
         logger.info(
             f"[SRABenchLoader] {self.dataset}: "
