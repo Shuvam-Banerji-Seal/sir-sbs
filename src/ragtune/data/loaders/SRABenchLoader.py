@@ -2,9 +2,9 @@
 
 import json as _json
 import logging
-from src.ragtune.data.datastructures import Query, Context, Sample
-from src.ragtune.data.loaders.BaseDataLoader import BaseDataLoader
-from src.ragtune.data.constants import HFDatasets
+from ragtune.data.datastructures import Query, Context, Sample
+from ragtune.data.loaders.BaseDataLoader import BaseDataLoader
+from ragtune.data.constants import HFDatasets
 
 logger = logging.getLogger(__name__)
 
