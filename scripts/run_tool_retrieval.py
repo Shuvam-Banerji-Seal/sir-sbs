@@ -12,6 +12,7 @@ Usage:
 """
 
 import os
+import tempfile
 import time
 from typing import Dict, List, Tuple
 
@@ -21,7 +22,7 @@ from rich.console import Console
 from ragtune.data.loaders import DataLoaderFactory
 from ragtune.data.constants import Benchmark, TOOLRET_SUBSETS, SRA_BENCH_SUBSETS
 from ragtune.evaluation.RetrievalEvaluator import RetrievalEvaluator
-from ragtune.components.indexers import IndexerFactory
+from ragtune.indexing import IndexFactory
 from ragtune.components.scenarios import ScenarioSpec, build_controller
 from ragtune.utils.config import config
 
@@ -82,10 +83,29 @@ def load_task(
 
 
 def build_retriever(corpus):
-    """Build retriever via IndexerFactory (configurable: bm25/dense)."""
-    indexer = IndexerFactory.from_env()
-    print_step(f"Indexing {len(corpus)} documents ({indexer.__class__.__name__})...")
-    return indexer.build(corpus)
+    """Build retriever via IndexFactory (configurable: pyterrier/faiss/flex)."""
+    index_type = os.environ.get("INDEX_TYPE", "pyterrier")
+    print_step(f"Indexing {len(corpus)} documents ({index_type})...")
+
+    # Build index using Mandeep's IndexFactory
+    indexer = IndexFactory.create(index_type)
+    index_path = os.path.join(tempfile.mkdtemp(), "index")
+    indexer.build_from_corpus(corpus, index_path=index_path)
+
+    # Create PyTerrierRetriever from the built index
+    from ragtune.adapters.pyterrier import PyTerrierRetriever
+    import pyterrier as pt
+
+    if not pt.java.started():
+        pt.java.init()
+    index_ref = pt.IndexFactory.of(index_path)
+    bm25 = pt.terrier.Retriever(
+        index_ref,
+        wmodel="BM25",
+        metadata=["docno", "text"],
+        num_results=CANDIDATES_TOP_K,
+    )
+    return PyTerrierRetriever(bm25), bm25
 
 
 # --- Evaluation ---

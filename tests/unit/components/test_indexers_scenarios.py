@@ -1,57 +1,33 @@
 """
-Unit tests for IndexerFactory and ScenarioFactory.
+Unit tests for IndexFactory (Mandeep's) and ScenarioFactory.
 """
 
 import pytest
-from ragtune.components.indexers import (
-    IndexerFactory,
-    BM25Indexer,
-    DenseIndexer,
-    BaseIndexer,
-)
+from ragtune.indexing import IndexFactory, PyTerrierIndexer
+from ragtune.registry import registry
 from ragtune.components.scenarios import ScenarioSpec, build_controller
 
 
-class TestIndexerFactory:
-    def test_create_bm25(self):
-        indexer = IndexerFactory.create("bm25", num_results=10)
-        assert isinstance(indexer, BM25Indexer)
-        assert indexer.num_results == 10
-
-    def test_create_dense(self):
-        indexer = IndexerFactory.create("dense", model_name="test-model")
-        assert isinstance(indexer, DenseIndexer)
-        assert indexer.model_name == "test-model"
+class TestIndexFactory:
+    def test_create_pyterrier(self):
+        indexer = IndexFactory.create("pyterrier")
+        assert isinstance(indexer, PyTerrierIndexer)
 
     def test_invalid_type_raises(self):
         with pytest.raises(ValueError, match="Unknown indexer type"):
-            IndexerFactory.create("invalid")
+            IndexFactory.create("invalid_nonexistent")
 
-    def test_register_custom(self):
-        class CustomIndexer(BaseIndexer):
-            def build(self, corpus):
-                return None
+    def test_registered_indexers(self):
+        all_indexers = registry.list_all().get("indexer", {})
+        assert "pyterrier" in all_indexers
+        assert "faiss" in all_indexers
 
-        IndexerFactory.register("custom", CustomIndexer)
-        indexer = IndexerFactory.create("custom")
-        assert isinstance(indexer, CustomIndexer)
+    def test_from_config_sparse(self):
+        from ragtune.config.models import IndexConfig
 
-    def test_from_env_default(self):
-        import os
-
-        os.environ.pop("INDEX_TYPE", None)
-        indexer = IndexerFactory.from_env()
-        assert isinstance(indexer, BM25Indexer)
-
-    def test_from_env_dense(self):
-        import os
-
-        os.environ["INDEX_TYPE"] = "dense"
-        os.environ["EMBEDDING_MODEL"] = "test-model"
-        indexer = IndexerFactory.from_env()
-        assert isinstance(indexer, DenseIndexer)
-        os.environ.pop("INDEX_TYPE")
-        os.environ.pop("EMBEDDING_MODEL")
+        config = IndexConfig(type="sparse")
+        indexer = IndexFactory.from_config(config)
+        assert isinstance(indexer, PyTerrierIndexer)
 
 
 class TestScenarioSpec:
@@ -75,10 +51,6 @@ class TestScenarioSpec:
         os.environ.pop("SCENARIOS")
 
     def test_build_controller(self):
-        from ragtune.components.indexers import BM25Indexer
-
-        indexer = BM25Indexer(num_results=10)
-
         spec = ScenarioSpec(name="test", reranker="noop", budget_docs=5)
         controller = build_controller(spec, None)
         assert controller is not None

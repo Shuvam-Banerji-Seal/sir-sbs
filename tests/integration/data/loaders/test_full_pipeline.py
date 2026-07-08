@@ -2,7 +2,7 @@
 Integration test for the full tool retrieval pipeline.
 
 Tests the complete flow:
-    DataLoaderFactory → IndexerFactory → ScenarioFactory → RetrievalEvaluator
+    DataLoaderFactory → IndexFactory → ScenarioFactory → RetrievalEvaluator
 
 This single test verifies all components work together end-to-end.
 """
@@ -11,7 +11,7 @@ import os
 import pytest
 from ragtune.data.loaders import DataLoaderFactory
 from ragtune.data.constants import Benchmark
-from ragtune.components.indexers import IndexerFactory
+from ragtune.indexing import IndexFactory
 from ragtune.components.scenarios import ScenarioSpec, build_controller
 from ragtune.evaluation.RetrievalEvaluator import RetrievalEvaluator
 
@@ -33,10 +33,23 @@ class TestFullPipeline:
         assert len(queries) > 0, "Queries should not be empty"
         assert len(qrels) > 0, "Qrels should not be empty"
 
-        # 2. Build retriever via IndexerFactory (BM25)
-        indexer = IndexerFactory.create("bm25", num_results=10)
-        retriever = indexer.build(corpus)
-        assert retriever is not None, "Retriever should not be None"
+        # 2. Build retriever via IndexFactory (BM25)
+        indexer = IndexFactory.create("pyterrier")
+        import tempfile, pyterrier as pt
+
+        if not pt.java.started():
+            pt.java.init()
+        index_path = os.path.join(tempfile.mkdtemp(), "idx")
+        indexer.build_from_corpus(corpus, index_path=index_path)
+        import pyterrier as pt2
+
+        idx_ref = pt2.IndexFactory.of(index_path)
+        bm25 = pt2.terrier.Retriever(
+            idx_ref, wmodel="BM25", metadata=["docno", "text"], num_results=10
+        )
+        from ragtune.adapters.pyterrier import PyTerrierRetriever
+
+        retriever = PyTerrierRetriever(bm25)
 
         # 3. Build scenarios via ScenarioSpec
         scenarios = ScenarioSpec.from_env()
@@ -94,9 +107,22 @@ class TestFullPipeline:
         assert len(qrels) > 0
 
         # 2. Index
-        indexer = IndexerFactory.create("bm25", num_results=10)
-        retriever = indexer.build(corpus)
-        assert retriever is not None
+        indexer = IndexFactory.create("pyterrier")
+        import tempfile, pyterrier as pt
+
+        if not pt.java.started():
+            pt.java.init()
+        index_path = os.path.join(tempfile.mkdtemp(), "idx")
+        indexer.build_from_corpus(corpus, index_path=index_path)
+        import pyterrier as pt2
+
+        idx_ref = pt2.IndexFactory.of(index_path)
+        bm25 = pt2.terrier.Retriever(
+            idx_ref, wmodel="BM25", metadata=["docno", "text"], num_results=10
+        )
+        from ragtune.adapters.pyterrier import PyTerrierRetriever
+
+        retriever = PyTerrierRetriever(bm25)
 
         # 3. Evaluate
         evaluator = RetrievalEvaluator(k_values=[10])
@@ -131,9 +157,22 @@ class TestFullPipeline:
         assert len(qrels) > 0
 
         # 2. Index
-        indexer = IndexerFactory.create("bm25", num_results=10)
-        retriever = indexer.build(corpus)
-        assert retriever is not None
+        indexer = IndexFactory.create("pyterrier")
+        import tempfile, pyterrier as pt
+
+        if not pt.java.started():
+            pt.java.init()
+        index_path = os.path.join(tempfile.mkdtemp(), "idx")
+        indexer.build_from_corpus(corpus, index_path=index_path)
+        import pyterrier as pt2
+
+        idx_ref = pt2.IndexFactory.of(index_path)
+        bm25 = pt2.terrier.Retriever(
+            idx_ref, wmodel="BM25", metadata=["docno", "text"], num_results=10
+        )
+        from ragtune.adapters.pyterrier import PyTerrierRetriever
+
+        retriever = PyTerrierRetriever(bm25)
 
         # 3. Evaluate
         evaluator = RetrievalEvaluator(k_values=[10])
@@ -174,15 +213,14 @@ class TestFullPipeline:
         os.environ.pop("SCENARIOS")
 
     def test_indexer_factory_all_types(self):
-        """Test that IndexerFactory creates correct indexer for each type."""
-        bm25 = IndexerFactory.create("bm25")
-        assert type(bm25).__name__ == "BM25Indexer"
+        """Test that IndexFactory creates correct indexer for each type."""
+        from ragtune.indexing import PyTerrierIndexer
 
-        dense = IndexerFactory.create("dense", model_name="test")
-        assert type(dense).__name__ == "DenseIndexer"
+        pyterrier = IndexFactory.create("pyterrier")
+        assert isinstance(pyterrier, PyTerrierIndexer)
 
         with pytest.raises(ValueError):
-            IndexerFactory.create("nonexistent")
+            IndexFactory.create("nonexistent")
 
     def test_data_loader_factory_cache_dir(self):
         """Test that DataLoaderFactory forwards cache_dir to loaders."""
