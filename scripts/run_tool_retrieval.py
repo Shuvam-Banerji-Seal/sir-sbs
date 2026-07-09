@@ -148,13 +148,17 @@ def run_controller_scenario(name, controller, queries, qrels):
 
 
 def run_baseline(retriever, queries):
-    """Pure retrieval baseline — no reranking."""
+    """Pure retrieval baseline — no reranking (uses controller with budget_docs=0)."""
     print_step("  Running [Baseline]...")
+    baseline_spec = ScenarioSpec(name="baseline", reranker="noop", budget_docs=0)
+    controller = build_controller(baseline_spec, retriever)
     results = {}
     for qid, qtext in queries.items():
         try:
-            output = retriever.retrieve({"query": qtext}, top_k=CANDIDATES_TOP_K)
-            results[qid] = {doc.id: 1.0 / (rank + 1) for rank, doc in enumerate(output)}
+            output = controller.run(qtext)
+            results[qid] = {
+                doc.id: 1.0 / (rank + 1) for rank, doc in enumerate(output.documents)
+            }
         except Exception as e:
             _console.print(f"  [yellow]ERR {qid}: {e}[/yellow]")
     return results
