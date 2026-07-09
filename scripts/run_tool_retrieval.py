@@ -105,7 +105,7 @@ def build_retriever(corpus):
         metadata=["docno", "text"],
         num_results=CANDIDATES_TOP_K,
     )
-    return PyTerrierRetriever(bm25), bm25
+    return PyTerrierRetriever(bm25)
 
 
 # --- Evaluation ---
