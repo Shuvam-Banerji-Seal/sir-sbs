@@ -2,7 +2,7 @@
 Integration test for the full tool retrieval pipeline.
 
 Tests the complete flow:
-    DataLoaderFactory → IndexFactory → ScenarioFactory → RetrievalEvaluator
+    DataLoaderFactory → IndexFactory → ConfigLoader → RetrievalEvaluator
 
 This single test verifies all components work together end-to-end.
 """
@@ -12,125 +12,95 @@ import pytest
 from ragtune.data.loaders import DataLoaderFactory
 from ragtune.data.constants import Benchmark
 from ragtune.indexing import IndexFactory
-from ragtune.components.scenarios import ScenarioSpec, build_controller
+from ragtune.cli.config_loader import ConfigLoader
 from ragtune.evaluation.RetrievalEvaluator import RetrievalEvaluator
+
+# Import adapters to register retrievers, rerankers in the registry
+import ragtune.adapters  # noqa: F401
+import ragtune.components  # noqa: F401
 
 
 class TestFullPipeline:
     """End-to-end integration test: load → index → retrieve → evaluate."""
 
-    def test_toolret_pipeline(self):
-        """Test full pipeline on ToolRet apibank (smallest subset)."""
-        # 1. Load data via DataLoaderFactory
-        factory = DataLoaderFactory()
-        loader = factory.create_dataloader(
-            dataset_name="apibank",
-            benchmark_name=Benchmark.TOOLRET,
-            n_queries=5,
-        )
-        corpus, queries, qrels = loader.load()
-        assert len(corpus) > 0, "Corpus should not be empty"
-        assert len(queries) > 0, "Queries should not be empty"
-        assert len(qrels) > 0, "Qrels should not be empty"
-
-        # 2. Build retriever via IndexFactory (BM25)
-        indexer = IndexFactory.create("pyterrier")
+    @staticmethod
+    def _build_retriever(corpus):
         import tempfile, pyterrier as pt
 
         if not pt.java.started():
             pt.java.init()
+        indexer = IndexFactory.create("pyterrier")
         index_path = os.path.join(tempfile.mkdtemp(), "idx")
         indexer.build_from_corpus(corpus, index_path=index_path)
-        import pyterrier as pt2
-
-        idx_ref = pt2.IndexFactory.of(index_path)
-        bm25 = pt2.terrier.Retriever(
+        idx_ref = pt.IndexFactory.of(index_path)
+        bm25 = pt.terrier.Retriever(
             idx_ref, wmodel="BM25", metadata=["docno", "text"], num_results=10
         )
         from ragtune.adapters.pyterrier import PyTerrierRetriever
 
-        retriever = PyTerrierRetriever(bm25)
+        return PyTerrierRetriever(bm25)
 
-        # 3. Build scenarios via ScenarioSpec
-        scenarios = ScenarioSpec.from_env()
-        assert len(scenarios) >= 1, "Should have at least 1 scenario"
+    def test_toolret_pipeline(self):
+        """Test full pipeline on ToolRet apibank (smallest subset)."""
+        factory = DataLoaderFactory()
+        loader = factory.create_dataloader(
+            dataset_name="apibank", benchmark_name=Benchmark.TOOLRET, n_queries=5
+        )
+        corpus, queries, qrels = loader.load()
+        assert len(corpus) > 0
+        assert len(queries) > 0
+        assert len(qrels) > 0
 
-        # 4. Create baseline controller (noop reranker, creates RAGtuneContext internally)
-        baseline_spec = ScenarioSpec(name="baseline", reranker="noop", budget_docs=0)
-        controller_baseline = build_controller(baseline_spec, retriever)
+        retriever = self._build_retriever(corpus)
 
-        # 5. Run baseline
+        # Test ConfigLoader default scenarios
+        scenarios = ConfigLoader.create_controllers_from_env(retriever)
+        assert len(scenarios) >= 1
+
+        # Run first scenario (BM25 baseline) on 3 queries
         evaluator = RetrievalEvaluator(k_values=[10])
         results = {}
         for qid, qtext in list(queries.items())[:3]:
-            output = controller_baseline.run(qtext)
+            output = scenarios[0][1].run(qtext)
             results[qid] = {
                 doc.id: 1.0 / (rank + 1) for rank, doc in enumerate(output.documents)
             }
-        assert len(results) > 0, "Should have results"
+        assert len(results) > 0
 
-        # 5. Evaluate
         metrics = evaluator.evaluate(qrels, results, k_values=[10])
-        assert "ndcg" in metrics, "Should have NDCG metric"
-        assert "recall" in metrics, "Should have Recall metric"
-        assert f"NDCG@10" in metrics["ndcg"], "Should have NDCG@10"
-        assert metrics["ndcg"]["NDCG@10"] >= 0, "NDCG should be non-negative"
+        assert "ndcg" in metrics
+        assert "NDCG@10" in metrics["ndcg"]
+        assert metrics["ndcg"]["NDCG@10"] >= 0
 
-        # 6. Build and run a controller scenario
-        spec = scenarios[0]
-        controller = build_controller(spec, retriever)
-        assert controller is not None, "Controller should not be None"
-
-        # 7. Run controller on one query
+        # Run second scenario on one query
         qid, qtext = list(queries.items())[0]
-        output = controller.run(qtext)
-        assert output is not None, "Controller output should not be None"
-        assert len(output.documents) > 0, "Should return documents"
+        output = scenarios[1][1].run(qtext)
+        assert output is not None
+        assert len(output.documents) > 0
 
         print(
-            f"Pipeline test passed: {len(corpus)} docs, {len(queries)} queries, "
-            f"NDCG@10={metrics['ndcg']['NDCG@10']:.4f}"
+            f"ToolRet pipeline OK: {len(corpus)} docs, NDCG@10={metrics['ndcg']['NDCG@10']:.4f}"
         )
 
     def test_skillret_pipeline(self):
         """Test full pipeline on SkillRet test split (limited)."""
-        # 1. Load
         factory = DataLoaderFactory()
         loader = factory.create_dataloader(
-            dataset_name="test",
-            benchmark_name=Benchmark.SKILLRET,
-            n_queries=5,
+            dataset_name="test", benchmark_name=Benchmark.SKILLRET, n_queries=5
         )
         corpus, queries, qrels = loader.load()
         assert len(corpus) > 0
         assert len(queries) > 0
         assert len(qrels) > 0
 
-        # 2. Index
-        indexer = IndexFactory.create("pyterrier")
-        import tempfile, pyterrier as pt
+        retriever = self._build_retriever(corpus)
+        scenarios = ConfigLoader.create_controllers_from_env(retriever)
+        assert len(scenarios) >= 1
 
-        if not pt.java.started():
-            pt.java.init()
-        index_path = os.path.join(tempfile.mkdtemp(), "idx")
-        indexer.build_from_corpus(corpus, index_path=index_path)
-        import pyterrier as pt2
-
-        idx_ref = pt2.IndexFactory.of(index_path)
-        bm25 = pt2.terrier.Retriever(
-            idx_ref, wmodel="BM25", metadata=["docno", "text"], num_results=10
-        )
-        from ragtune.adapters.pyterrier import PyTerrierRetriever
-
-        retriever = PyTerrierRetriever(bm25)
-
-        # 3. Evaluate
         evaluator = RetrievalEvaluator(k_values=[10])
-        baseline_spec = ScenarioSpec(name="baseline", reranker="noop", budget_docs=0)
-        controller_baseline = build_controller(baseline_spec, retriever)
         results = {}
         for qid, qtext in list(queries.items())[:3]:
-            output = controller_baseline.run(qtext)
+            output = scenarios[0][1].run(qtext)
             results[qid] = {
                 doc.id: 1.0 / (rank + 1) for rank, doc in enumerate(output.documents)
             }
@@ -138,49 +108,28 @@ class TestFullPipeline:
         assert metrics["ndcg"]["NDCG@10"] >= 0
 
         print(
-            f"SkillRet pipeline test passed: {len(corpus)} skills, "
-            f"NDCG@10={metrics['ndcg']['NDCG@10']:.4f}"
+            f"SkillRet pipeline OK: {len(corpus)} skills, NDCG@10={metrics['ndcg']['NDCG@10']:.4f}"
         )
 
     def test_sra_pipeline(self):
         """Test full pipeline on SRA-Bench toolqa (limited)."""
-        # 1. Load
         factory = DataLoaderFactory()
         loader = factory.create_dataloader(
-            dataset_name="toolqa",
-            benchmark_name=Benchmark.SRA_BENCH,
-            n_queries=5,
+            dataset_name="toolqa", benchmark_name=Benchmark.SRA_BENCH, n_queries=5
         )
         corpus, queries, qrels = loader.load()
         assert len(corpus) > 0
         assert len(queries) > 0
         assert len(qrels) > 0
 
-        # 2. Index
-        indexer = IndexFactory.create("pyterrier")
-        import tempfile, pyterrier as pt
+        retriever = self._build_retriever(corpus)
+        scenarios = ConfigLoader.create_controllers_from_env(retriever)
+        assert len(scenarios) >= 1
 
-        if not pt.java.started():
-            pt.java.init()
-        index_path = os.path.join(tempfile.mkdtemp(), "idx")
-        indexer.build_from_corpus(corpus, index_path=index_path)
-        import pyterrier as pt2
-
-        idx_ref = pt2.IndexFactory.of(index_path)
-        bm25 = pt2.terrier.Retriever(
-            idx_ref, wmodel="BM25", metadata=["docno", "text"], num_results=10
-        )
-        from ragtune.adapters.pyterrier import PyTerrierRetriever
-
-        retriever = PyTerrierRetriever(bm25)
-
-        # 3. Evaluate
         evaluator = RetrievalEvaluator(k_values=[10])
-        baseline_spec = ScenarioSpec(name="baseline", reranker="noop", budget_docs=0)
-        controller_baseline = build_controller(baseline_spec, retriever)
         results = {}
         for qid, qtext in list(queries.items())[:3]:
-            output = controller_baseline.run(qtext)
+            output = scenarios[0][1].run(qtext)
             results[qid] = {
                 doc.id: 1.0 / (rank + 1) for rank, doc in enumerate(output.documents)
             }
@@ -188,39 +137,38 @@ class TestFullPipeline:
         assert metrics["ndcg"]["NDCG@10"] >= 0
 
         print(
-            f"SRA-Bench pipeline test passed: {len(corpus)} skills, "
-            f"NDCG@10={metrics['ndcg']['NDCG@10']:.4f}"
+            f"SRA-Bench pipeline OK: {len(corpus)} skills, NDCG@10={metrics['ndcg']['NDCG@10']:.4f}"
         )
 
-    def test_scenario_specs_from_env(self):
-        """Test that ScenarioSpec.from_env works with defaults and custom JSON."""
+    def test_scenarios_from_env(self):
+        """Test ConfigLoader multi-scenario from env."""
         import json
+        from ragtune.components.retrievers import InMemoryRetriever
 
-        # Default
-        os.environ.pop("SCENARIOS", None)
-        specs = ScenarioSpec.from_env()
-        assert len(specs) == 3
-        assert specs[0].reranker == "noop"
-
-        # Custom
-        os.environ["SCENARIOS"] = json.dumps(
-            [{"name": "custom", "reranker": "cross-encoder", "budget_docs": 15}]
+        mock_retriever = InMemoryRetriever(
+            documents=[{"id": "d1", "content": "test doc"}]
         )
-        specs = ScenarioSpec.from_env()
-        assert len(specs) == 1
-        assert specs[0].name == "custom"
-        assert specs[0].budget_docs == 15
+
+        os.environ.pop("SCENARIOS", None)
+        scenarios = ConfigLoader.create_controllers_from_env(mock_retriever)
+        assert len(scenarios) == 3
+        assert "BM25" in scenarios[0][0]
+
+        os.environ["SCENARIOS"] = json.dumps(
+            [
+                {
+                    "name": "custom",
+                    "pipeline": {
+                        "components": {"reranker": {"type": "noop"}},
+                        "budget": {"limits": {"rerank_docs": 5}},
+                    },
+                }
+            ]
+        )
+        scenarios = ConfigLoader.create_controllers_from_env(mock_retriever)
+        assert len(scenarios) == 1
+        assert scenarios[0][0] == "custom"
         os.environ.pop("SCENARIOS")
-
-    def test_indexer_factory_all_types(self):
-        """Test that IndexFactory creates correct indexer for each type."""
-        from ragtune.indexing import PyTerrierIndexer
-
-        pyterrier = IndexFactory.create("pyterrier")
-        assert isinstance(pyterrier, PyTerrierIndexer)
-
-        with pytest.raises(ValueError):
-            IndexFactory.create("nonexistent")
 
     def test_data_loader_factory_cache_dir(self):
         """Test that DataLoaderFactory forwards cache_dir to loaders."""

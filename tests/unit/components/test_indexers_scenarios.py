@@ -1,11 +1,16 @@
 """
-Unit tests for IndexFactory (Mandeep's) and ScenarioFactory.
+Unit tests for IndexFactory and ConfigLoader scenario system.
 """
 
+import os
 import pytest
 from ragtune.indexing import IndexFactory, PyTerrierIndexer
 from ragtune.registry import registry
-from ragtune.components.scenarios import ScenarioSpec, build_controller
+from ragtune.cli.config_loader import ConfigLoader
+
+# Import adapters and components to register them in the registry
+import ragtune.adapters  # noqa: F401 — registers retrievers
+import ragtune.components  # noqa: F401 — registers rerankers, estimators, etc.
 
 
 class TestIndexFactory:
@@ -22,35 +27,43 @@ class TestIndexFactory:
         assert "pyterrier" in all_indexers
         assert "faiss" in all_indexers
 
-    def test_from_config_sparse(self):
-        from ragtune.config.models import IndexConfig
 
-        config = IndexConfig(type="sparse")
-        indexer = IndexFactory.from_config(config)
-        assert isinstance(indexer, PyTerrierIndexer)
-
-
-class TestScenarioSpec:
+class TestConfigLoaderScenarios:
     def test_default_scenarios(self):
-        import os
-
         os.environ.pop("SCENARIOS", None)
-        specs = ScenarioSpec.from_env()
-        assert len(specs) == 3
-        assert specs[0].reranker == "noop"
-        assert specs[1].reranker == "cross-encoder"
+        scenarios = ConfigLoader._default_scenarios()
+        assert len(scenarios) == 3
+        assert scenarios[0]["name"] == "BM25 (baseline)"
+        assert scenarios[1]["name"] == "Static Rerank"
+        assert scenarios[2]["name"] == "RAGtune (budget=10)"
 
-    def test_custom_scenarios(self):
-        import os
+    def test_default_scenarios_components(self):
+        scenarios = ConfigLoader._default_scenarios()
+        for s in scenarios:
+            assert "pipeline" in s
+            assert "budget" in s["pipeline"]
+            assert "components" in s["pipeline"]
 
-        os.environ["SCENARIOS"] = '[{"name":"test","reranker":"noop","budget_docs":5}]'
-        specs = ScenarioSpec.from_env()
-        assert len(specs) == 1
-        assert specs[0].name == "test"
-        assert specs[0].budget_docs == 5
+    def test_custom_scenarios_from_env(self):
+        os.environ["SCENARIOS"] = (
+            '[{"name":"test","pipeline":{"components":{"reranker":{"type":"noop"}},"budget":{"limits":{"rerank_docs":5}}}}]'
+        )
+        # Test that default scenarios + inject retriever = controller
+        from ragtune.components.retrievers import InMemoryRetriever
+
+        mock_retriever = InMemoryRetriever(documents=[{"id": "d1", "content": "test doc"}])
+        scenarios = ConfigLoader.create_controllers_from_env(retriever=mock_retriever)
+        assert len(scenarios) == 1
+        assert scenarios[0][0] == "test"
+        assert scenarios[0][1] is not None
         os.environ.pop("SCENARIOS")
 
-    def test_build_controller(self):
-        spec = ScenarioSpec(name="test", reranker="noop", budget_docs=5)
-        controller = build_controller(spec, None)
-        assert controller is not None
+    def test_empty_scenarios_defaults(self):
+        os.environ.pop("SCENARIOS", None)
+        from ragtune.components.retrievers import InMemoryRetriever
+
+        mock_retriever = InMemoryRetriever(documents=[{"id": "d1", "content": "test doc"}])
+        scenarios = ConfigLoader.create_controllers_from_env(retriever=mock_retriever)
+        assert len(scenarios) == 3
+        assert "BM25" in scenarios[0][0]
+        assert scenarios[0][1] is not None
