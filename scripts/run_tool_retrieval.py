@@ -27,6 +27,10 @@ from ragtune.cli.config_loader import ConfigLoader
 from ragtune.adapters.pyterrier import PyTerrierRetriever
 from ragtune.utils.config import config
 
+# Trigger registry registration for all components
+import ragtune.components  # noqa: F401
+import ragtune.adapters  # noqa: F401
+
 _console = Console()
 
 
