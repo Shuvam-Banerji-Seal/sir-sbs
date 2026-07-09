@@ -206,16 +206,20 @@ class ConfigLoader:
                 "name": "Static Rerank",
                 "pipeline": {
                     "components": {
-                        "reranker": {"type": "cross-encoder"},
+                        "reranker": {
+                            "type": "cross-encoder",
+                            "params": {"batch_size": 256},
+                        },
                         "estimator": {"type": "baseline"},
                         "scheduler": {
                             "type": "active-learning",
-                            "params": {"batch_size": 20},
+                            "params": {"batch_size": 50},
                         },
+                        "assembler": {"type": "greedy", "params": {"max_docs": 100}},
                     },
                     "budget": {
                         "limits": {
-                            "rerank_docs": 20,
+                            "rerank_docs": 50,
                             "tokens": 100_000,
                             "latency_ms": 600_000,
                         }
@@ -226,12 +230,16 @@ class ConfigLoader:
                 "name": "RAGtune (budget=10)",
                 "pipeline": {
                     "components": {
-                        "reranker": {"type": "cross-encoder"},
+                        "reranker": {
+                            "type": "cross-encoder",
+                            "params": {"batch_size": 256},
+                        },
                         "estimator": {"type": "similarity"},
                         "scheduler": {
                             "type": "active-learning",
-                            "params": {"batch_size": 2},
+                            "params": {"batch_size": 5},
                         },
+                        "assembler": {"type": "greedy", "params": {"max_docs": 100}},
                     },
                     "budget": {
                         "limits": {
