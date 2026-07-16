@@ -151,7 +151,7 @@ class TestFullPipeline:
 
         os.environ.pop("SCENARIOS", None)
         scenarios = ConfigLoader.create_controllers_from_env(mock_retriever)
-        assert len(scenarios) == 3
+        assert len(scenarios) == 7
         assert "BM25" in scenarios[0][0]
 
         os.environ["SCENARIOS"] = json.dumps(

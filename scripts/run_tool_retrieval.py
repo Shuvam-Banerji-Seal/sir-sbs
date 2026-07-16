@@ -42,6 +42,34 @@ def ps(msg):
     _console.print(f"[dim]{msg}[/dim]")
 
 
+# ── Query sanitization (strip LaTeX/math/special chars that crash TerrierQL) ──
+
+import re as _re
+
+
+def sanitize_query(text):
+    """Strip LaTeX, math symbols, unicode, and special chars for PyTerrier."""
+    if not text:
+        return ""
+    text = _re.sub(r"\$[^$]*\$", "", text)
+    text = _re.sub(r"\$\$[^$]*\$\$", "", text)
+    text = _re.sub(r"\\[a-zA-Z]+", "", text)
+    text = _re.sub(r"\\(.)", r"\1", text)
+    text = _re.sub(r"\^+", " ** ", text)
+    text = text.replace("{", "(").replace("}", ")")
+    text = _re.sub(r"#\d+", "", text)
+    text = text.replace("#", " ").replace("*", " × ")
+    text = text.replace("\u201c", '"').replace("\u201d", '"')
+    text = text.replace("\u2018", "'").replace("\u2019", "'")
+    text = text.replace("\u2013", "-").replace("\u2014", "-")
+    text = (
+        text.replace("\u00b0", " deg ").replace("\u00b5", " u ").replace("\u00ae", "")
+    )
+    text = text.encode("ascii", "ignore").decode("ascii")
+    text = _re.sub(r"\s+", " ", text).strip()
+    return text[:2000]
+
+
 # --- Configuration (via environment variables) ---
 
 BENCHMARK: str = os.environ.get("BENCHMARK", "toolret")
@@ -127,7 +155,7 @@ def main():
             results = {}
             for qid, qtext in queries.items():
                 try:
-                    out = controller.run(qtext)
+                    out = controller.run(sanitize_query(qtext))
                     results[qid] = {
                         d.id: 1.0 / (i + 1) for i, d in enumerate(out.documents)
                     }

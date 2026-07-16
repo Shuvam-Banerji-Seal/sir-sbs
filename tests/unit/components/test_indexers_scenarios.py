@@ -32,10 +32,10 @@ class TestConfigLoaderScenarios:
     def test_default_scenarios(self):
         os.environ.pop("SCENARIOS", None)
         scenarios = ConfigLoader._default_scenarios()
-        assert len(scenarios) == 3
-        assert scenarios[0]["name"] == "BM25 (baseline)"
-        assert scenarios[1]["name"] == "Static Rerank"
-        assert scenarios[2]["name"] == "RAGtune (budget=10)"
+        assert len(scenarios) == 7
+        assert scenarios[0]["name"] == "bm25_only"
+        assert scenarios[1]["name"] == "crossenc_tight"
+        assert scenarios[6]["name"] == "crossenc_sim_loose"
 
     def test_default_scenarios_components(self):
         scenarios = ConfigLoader._default_scenarios()
@@ -51,7 +51,9 @@ class TestConfigLoaderScenarios:
         # Test that default scenarios + inject retriever = controller
         from ragtune.components.retrievers import InMemoryRetriever
 
-        mock_retriever = InMemoryRetriever(documents=[{"id": "d1", "content": "test doc"}])
+        mock_retriever = InMemoryRetriever(
+            documents=[{"id": "d1", "content": "test doc"}]
+        )
         scenarios = ConfigLoader.create_controllers_from_env(retriever=mock_retriever)
         assert len(scenarios) == 1
         assert scenarios[0][0] == "test"
@@ -62,8 +64,10 @@ class TestConfigLoaderScenarios:
         os.environ.pop("SCENARIOS", None)
         from ragtune.components.retrievers import InMemoryRetriever
 
-        mock_retriever = InMemoryRetriever(documents=[{"id": "d1", "content": "test doc"}])
+        mock_retriever = InMemoryRetriever(
+            documents=[{"id": "d1", "content": "test doc"}]
+        )
         scenarios = ConfigLoader.create_controllers_from_env(retriever=mock_retriever)
-        assert len(scenarios) == 3
-        assert "BM25" in scenarios[0][0]
+        assert len(scenarios) == 7
+        assert "bm25" in scenarios[0][0]
         assert scenarios[0][1] is not None

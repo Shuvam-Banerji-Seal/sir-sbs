@@ -180,10 +180,10 @@ class ConfigLoader:
 
     @staticmethod
     def _default_scenarios() -> List[Dict[str, Any]]:
-        """Return 3 default benchmark scenarios."""
+        """Return 7 default benchmark scenarios (BM25 + 6 CrossEncoder variants)."""
         return [
             {
-                "name": "BM25 (baseline)",
+                "name": "bm25_only",
                 "pipeline": {
                     "components": {
                         "reranker": {"type": "noop"},
@@ -192,6 +192,7 @@ class ConfigLoader:
                             "type": "active-learning",
                             "params": {"batch_size": 1},
                         },
+                        "assembler": {"type": "greedy", "params": {"max_docs": 100}},
                     },
                     "budget": {
                         "limits": {
@@ -203,7 +204,7 @@ class ConfigLoader:
                 },
             },
             {
-                "name": "Static Rerank",
+                "name": "crossenc_tight",
                 "pipeline": {
                     "components": {
                         "reranker": {
@@ -213,13 +214,13 @@ class ConfigLoader:
                         "estimator": {"type": "baseline"},
                         "scheduler": {
                             "type": "active-learning",
-                            "params": {"batch_size": 50},
+                            "params": {"batch_size": 2},
                         },
                         "assembler": {"type": "greedy", "params": {"max_docs": 100}},
                     },
                     "budget": {
                         "limits": {
-                            "rerank_docs": 50,
+                            "rerank_docs": 5,
                             "tokens": 100_000,
                             "latency_ms": 600_000,
                         }
@@ -227,7 +228,79 @@ class ConfigLoader:
                 },
             },
             {
-                "name": "RAGtune (budget=10)",
+                "name": "crossenc_medium",
+                "pipeline": {
+                    "components": {
+                        "reranker": {
+                            "type": "cross-encoder",
+                            "params": {"batch_size": 256},
+                        },
+                        "estimator": {"type": "baseline"},
+                        "scheduler": {
+                            "type": "active-learning",
+                            "params": {"batch_size": 5},
+                        },
+                        "assembler": {"type": "greedy", "params": {"max_docs": 100}},
+                    },
+                    "budget": {
+                        "limits": {
+                            "rerank_docs": 15,
+                            "tokens": 100_000,
+                            "latency_ms": 600_000,
+                        }
+                    },
+                },
+            },
+            {
+                "name": "crossenc_loose",
+                "pipeline": {
+                    "components": {
+                        "reranker": {
+                            "type": "cross-encoder",
+                            "params": {"batch_size": 256},
+                        },
+                        "estimator": {"type": "baseline"},
+                        "scheduler": {
+                            "type": "active-learning",
+                            "params": {"batch_size": 10},
+                        },
+                        "assembler": {"type": "greedy", "params": {"max_docs": 100}},
+                    },
+                    "budget": {
+                        "limits": {
+                            "rerank_docs": 30,
+                            "tokens": 100_000,
+                            "latency_ms": 600_000,
+                        }
+                    },
+                },
+            },
+            {
+                "name": "crossenc_sim_tight",
+                "pipeline": {
+                    "components": {
+                        "reranker": {
+                            "type": "cross-encoder",
+                            "params": {"batch_size": 256},
+                        },
+                        "estimator": {"type": "similarity"},
+                        "scheduler": {
+                            "type": "active-learning",
+                            "params": {"batch_size": 2},
+                        },
+                        "assembler": {"type": "greedy", "params": {"max_docs": 100}},
+                    },
+                    "budget": {
+                        "limits": {
+                            "rerank_docs": 5,
+                            "tokens": 100_000,
+                            "latency_ms": 600_000,
+                        }
+                    },
+                },
+            },
+            {
+                "name": "crossenc_sim_medium",
                 "pipeline": {
                     "components": {
                         "reranker": {
@@ -243,7 +316,31 @@ class ConfigLoader:
                     },
                     "budget": {
                         "limits": {
-                            "rerank_docs": 10,
+                            "rerank_docs": 15,
+                            "tokens": 100_000,
+                            "latency_ms": 600_000,
+                        }
+                    },
+                },
+            },
+            {
+                "name": "crossenc_sim_loose",
+                "pipeline": {
+                    "components": {
+                        "reranker": {
+                            "type": "cross-encoder",
+                            "params": {"batch_size": 256},
+                        },
+                        "estimator": {"type": "similarity"},
+                        "scheduler": {
+                            "type": "active-learning",
+                            "params": {"batch_size": 10},
+                        },
+                        "assembler": {"type": "greedy", "params": {"max_docs": 100}},
+                    },
+                    "budget": {
+                        "limits": {
+                            "rerank_docs": 30,
                             "tokens": 100_000,
                             "latency_ms": 600_000,
                         }
