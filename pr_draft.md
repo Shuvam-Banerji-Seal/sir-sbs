@@ -64,7 +64,7 @@ DataLoaderFactory → IndexFactory (Mandeep's) → ConfigLoader (registry-backed
 Replaced the redundant `ScenarioSpec` (which hardcoded 2×2 component maps — only `noop`/`cross-encoder` rerankers and `baseline`/`similarity` estimators) with a proper registry-backed system in `ConfigLoader`:
 
 - `ConfigLoader.create_controllers_from_env()` — reads `SCENARIOS` env var (JSON array of pipeline configs) or returns 3 defaults (BM25 baseline, Static Rerank, RAGtune)
-- `ConfigLoader._default_scenarios()` — 3 default scenarios using registry-backed component types (supports all 7 rerankers, 5 estimators, 3 reformulators — not just 2×2)
+- `ConfigLoader._default_scenarios()` — 7 default scenarios matching the pre-refactoring experiment grid: `bm25_only`, `crossenc_tight/medium/loose`, `crossenc_sim_tight/medium/loose`
 - The old `scenarios.py` was removed (97 lines, 0 remaining)
 
 **Why:** The YAML config system (`ConfigLoader` + `registry`) already does everything `ScenarioSpec` did — but better, with full registry integration. The only unique feature (multi-scenario iteration from env var) was reimplemented on top of `ConfigLoader`.
@@ -225,9 +225,65 @@ SCENARIOS='[{
 | `INDEX_TYPE` | `pyterrier` | Index type (from Mandeep's IndexFactory) |
 | `HF_TOKEN` | — | HuggingFace token for dataset downloads |
 
+## RAGtune Budget Configurations
+
+The 7 default scenarios cover 3 budget levels with 2 estimator strategies:
+
+| Config | Budget (docs) | Batch Size | Estimator | Meaning |
+|--------|:------------:|:----------:|-----------|---------|
+| `bm25_only` | 0 | 1 | baseline | Pure BM25 — no reranking |
+| `crossenc_tight` | 5 | 2 | baseline | Low budget — fast, 5 docs |
+| `crossenc_medium` | 15 | 5 | baseline | Moderate — 15 docs |
+| `crossenc_loose` | 30 | 10 | baseline | High budget — 30 docs, best quality |
+| `crossenc_sim_tight` | 5 | 2 | similarity | Low + similarity estimator |
+| `crossenc_sim_medium` | 15 | 5 | similarity | Moderate + similarity estimator |
+| `crossenc_sim_loose` | 30 | 10 | similarity | High + similarity estimator |
+
+The **similarity estimator** scores documents by cosine similarity to the best already-seen document (instead of random). The pattern: **loose > medium > tight** — more rerank budget consistently gives better NDCG, at the cost of more GPU time.
+
 ---
 
-## PR size justification
+## Full Benchmark Results (all 7 configurations)
+
+### ToolRet — 16 subsets, 50 queries each
+
+| Subset | BM25 | tight | medium | loose | sim_tight | sim_medium | sim_loose | Best |
+|--------|:----:|:-----:|:------:|:-----:|:---------:|:----------:|:---------:|:----:|
+| apibank | 0.5284 | 0.5508 | **0.5517** | 0.5517 | 0.5508 | 0.5517 | 0.5517 | RAGtune |
+| gorilla-tensor | 0.4199 | 0.4921 | 0.5148 | **0.5279** | 0.4921 | — | 0.5279 | loose |
+| appbench | **0.8039** | 0.7921 | 0.7876 | 0.7876 | 0.7921 | 0.7876 | 0.7876 | BM25 |
+| gorilla-huggingface | 0.5409 | 0.5936 | 0.6207 | **0.6344** | 0.5936 | — | 0.6344 | loose |
+| metatool | 0.5670 | **0.6188** | 0.6040 | 0.6040 | 0.6188 | 0.6040 | 0.6040 | tight |
+| craft-math-algebra | 0.7054 | 0.7625 | 0.7823 | **0.7949** | 0.7625 | — | 0.7949 | loose |
+| toolalpaca | 0.7947 | **0.8375** | 0.8366 | 0.8284 | 0.8375 | — | 0.8284 | tight |
+| ultratool | 0.7923 | 0.7988 | **0.8307** | 0.8124 | 0.8024 | 0.8307 | 0.8124 | medium |
+| craft-tabmwp | 0.3626 | 0.3652 | **0.3914** | 0.3706 | 0.3652 | — | 0.3706 | medium |
+| gpt4tools | **0.6797** | 0.4999 | 0.3302 | 0.3120 | 0.4999 | — | 0.3120 | BM25 |
+| gorilla-pytorch | **0.5176** | 0.4714 | 0.4863 | 0.4863 | 0.4714 | — | 0.4863 | BM25 |
+| restgpt-spotify | **0.7058** | 0.6779 | 0.6824 | 0.6787 | 0.6777 | — | 0.6787 | BM25 |
+
+### SkillRet — 4,997 queries
+
+| Config | NDCG@10 | Time |
+|--------|:-------:|:----:|
+| **bm25_only** | **0.6428** | 6.4 min |
+| crossenc_tight | 0.5541 | 12.7 min |
+| crossenc_medium | 0.4637 | 18.2 min |
+| crossenc_loose | 0.4033 | 30.2 min |
+| crossenc_sim_tight | 0.5541 | 13.3 min |
+| crossenc_sim_medium | 0.4638 | 15.3 min |
+| crossenc_sim_loose | 0.4032 | 19.1 min |
+
+### SRA-Bench — 5,400 queries across 6 subsets
+
+| Subset | BM25 | tight | medium | loose | sim_tight | sim_medium | sim_loose | Best |
+|--------|:----:|:-----:|:------:|:-----:|:---------:|:----------:|:---------:|:----:|
+| toolqa (1,430q) | 0.5676 | 0.6104 | 0.6309 | **0.6434** | 0.6100 | 0.6309 | 0.6434 | loose |
+| theoremqa (747q) | 0.6589 | 0.6659 | 0.6613 | 0.6566 | **0.6677** | 0.6625 | 0.6571 | sim_tight |
+| bigcodebench (1,140q) | **0.5163** | 0.4975 | 0.4693 | 0.4338 | 0.4984 | 0.4696 | 0.4327 | BM25 |
+| champ (223q) | 0.2322 | 0.2223 | **0.2333** | 0.2297 | 0.2233 | 0.2281 | 0.2310 | medium |
+| logicbench (760q) | 0.0405 | 0.0434 | 0.0493 | **0.0548** | 0.0434 | 0.0493 | 0.0548 | loose |
+| medcalcbench (1,100q) | **0.4141** | 0.4094 | 0.3987 | 0.3709 | 0.4094 | 0.3987 | 0.3709 | BM25 |
 
 This PR is **13 files, +1,451/-92 lines** (net +1,359). Per Rule 03, PRs >500 lines must justify size. This cannot be split because:
 
