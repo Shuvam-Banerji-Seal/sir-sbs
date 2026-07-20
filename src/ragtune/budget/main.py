@@ -5,7 +5,7 @@ Unified budget entry point. Calculates cost, carbon, and energy
 for any operation using the selected budget loader.
 
 Usage:
-    from src.ragtune.budget import calculate_budget
+    from ragtune.budget import calculate_budget
 
     result = calculate_budget(
         budget_type="vllm",
@@ -21,8 +21,8 @@ Usage:
 
 from typing import Dict, Any, Optional
 
-from src.ragtune.budget.factory import BudgetLoaderFactory
-from src.ragtune.budget.result import BudgetResult
+from ragtune.budget.factory import BudgetLoaderFactory
+from ragtune.budget.result import BudgetResult
 
 
 def calculate_budget(

@@ -18,9 +18,9 @@ Also incorporates:
 import math
 from typing import Dict, Any, Optional
 
-from src.ragtune.budget.base import BaseBudgetLoader, BudgetConfig
-from src.ragtune.budget.factory import BudgetLoaderFactory
-from src.ragtune.budget.result import BudgetResult
+from ragtune.budget.base import BaseBudgetLoader, BudgetConfig
+from ragtune.budget.factory import BudgetLoaderFactory
+from ragtune.budget.result import BudgetResult
 
 
 # ── Hardware database (GPU specs) ────────────────────────────────────────

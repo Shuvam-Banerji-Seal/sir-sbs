@@ -42,16 +42,6 @@ class ConfigLoader:
 
         budget = CostBudget(limits=limits)
 
-        from ragtune.core.interfaces import (
-            BaseRetriever,
-            BaseReranker,
-            BaseReformulator,
-            BaseAssembler,
-            BaseScheduler,
-            BaseEstimator,
-            BaseFeedback,
-        )
-
         def create_component(category: str, conf: Any):
             if isinstance(conf, list):
                 # Special case for estimators: wrap in CompositeEstimator

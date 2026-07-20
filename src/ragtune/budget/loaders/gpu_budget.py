@@ -12,9 +12,9 @@ but don't need the full vLLM concurrency model.
 
 from typing import Dict, Any, Optional
 
-from src.ragtune.budget.base import BaseBudgetLoader, BudgetConfig
-from src.ragtune.budget.factory import BudgetLoaderFactory
-from src.ragtune.budget.result import BudgetResult
+from ragtune.budget.base import BaseBudgetLoader, BudgetConfig
+from ragtune.budget.factory import BudgetLoaderFactory
+from ragtune.budget.result import BudgetResult
 
 GPU_SPECS = {
     "H100-NVL-96GB": {"hourly_rate": 6.98, "tdp_w": 700},

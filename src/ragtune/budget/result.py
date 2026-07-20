@@ -64,4 +64,5 @@ class BudgetResult:
             ),
             gpu_utilization=max(self.gpu_utilization, other.gpu_utilization),
             latency_slo_met=self.latency_slo_met and other.latency_slo_met,
+            breakdown={**self.breakdown, **other.breakdown},
         )

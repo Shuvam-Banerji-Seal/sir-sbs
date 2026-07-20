@@ -13,8 +13,8 @@ import os
 import yaml
 from typing import Dict, Any, Optional
 
-from src.ragtune.budget.base import BaseBudgetLoader, BudgetConfig
-from src.ragtune.budget.result import BudgetResult
+from ragtune.budget.base import BaseBudgetLoader, BudgetConfig
+from ragtune.budget.result import BudgetResult
 
 
 class BudgetLoaderFactory:
