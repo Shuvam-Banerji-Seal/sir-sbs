@@ -16,10 +16,12 @@ from ragtune.budget.result import BudgetResult
 
 
 # Default per-token rates ($/1M tokens)
+# Source: OpenAI pricing (openai.com/api/pricing), mid-2026
+# Input/output match GPT-4o; cached rate is 50% discount per OpenAI prompt caching.
 DEFAULT_RATES = {
     "input": 2.50,
     "output": 10.00,
-    "cached_input": 0.30,
+    "cached_input": 1.25,  # 50% discount on GPT-4o input rate
 }
 
 
@@ -47,7 +49,7 @@ class TokenBudgetLoader(BaseBudgetLoader):
             "cached_rate", DEFAULT_RATES["cached_input"]
         )
 
-        uncached_prompt = prompt_tokens - cached_tokens
+        uncached_prompt = max(0, prompt_tokens - cached_tokens)
         cost = (
             (uncached_prompt / 1_000_000 * input_rate)
             + (cached_tokens / 1_000_000 * cached_rate)

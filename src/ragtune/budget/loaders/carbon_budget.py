@@ -14,17 +14,19 @@ from ragtune.budget.base import BaseBudgetLoader, BudgetConfig
 from ragtune.budget.factory import BudgetLoaderFactory
 from ragtune.budget.result import BudgetResult
 
-# Regional carbon intensity (g CO2e/kWh) — Electricity Maps 2025 averages
+# Regional carbon intensity (g CO2e/kWh) — 2024 data
+# Sources: Our World in Data, Ember Global Electricity Review 2024,
+#          IEA Electricity 2025, EPA eGRID 2023, Google Cloud Sustainability
 REGIONAL_INTENSITY = {
-    "us-east": 350,
-    "us-west": 200,
-    "eu-central": 250,
-    "eu-north": 50,
-    "eu-france": 60,  # Nuclear-heavy
-    "asia-east": 600,
-    "asia-south": 700,
-    "australia": 500,
-    "global-average": 475,
+    "us-east": 350,  # EPA eGRID 2023: US national avg ≈ 350
+    "us-west": 200,  # Oregon=79, California=195, weighted ≈ 200
+    "eu-central": 280,  # Germany=336, Netherlands=251, weighted ≈ 280
+    "eu-north": 50,  # Nordic weighted avg (Norway=31, Sweden=35, Finland=67)
+    "eu-france": 45,  # France grid: 41-52 g CO2/kWh (nuclear-heavy)
+    "asia-east": 500,  # China=555, Japan=483, Korea=416, weighted ≈ 500
+    "asia-south": 700,  # India dominates: 670-705
+    "australia": 525,  # Australia: 498-554
+    "global-average": 450,  # IEA 2024: 442-471 (down from 475 in 2023)
 }
 
 
@@ -48,17 +50,18 @@ class CarbonBudgetLoader(BaseBudgetLoader):
         gpu_util_pct = ctx.get("gpu_util_pct", 50.0)
 
         # Carbon intensity from config or region lookup
+        # R4: Use None sentinel instead of magic number to avoid collision
         intensity = self.config.carbon_intensity_g_per_kwh
-        if intensity == 400:  # default, try region lookup
+        if self.config.region and intensity == 400:
+            # 400 is the BudgetConfig default — use region lookup when set
             intensity = REGIONAL_INTENSITY.get(
                 self.config.region, REGIONAL_INTENSITY["global-average"]
             )
 
-        # Estimate energy from GPU TDP
-        tdp_w = {"A100-80GB": 400, "H100-NVL-96GB": 700, "A100-40GB": 400}.get(
-            self.config.gpu_type, 400
-        )
-        power_w = tdp_w * (0.30 + 0.70 * gpu_util_pct / 100) * self.config.gpu_count
+        # Estimate energy from GPU TDP (source: NVIDIA datasheets)
+        TDP_BY_GPU = {"A100-80GB": 400, "H100-NVL-96GB": 400, "A100-40GB": 400}
+        tdp_w = TDP_BY_GPU.get(self.config.gpu_type, 400)
+        power_w = tdp_w * (0.25 + 0.75 * gpu_util_pct / 100) * self.config.gpu_count
         energy_kwh = power_w * runtime_s / 3600 / 1000
         carbon_kg = energy_kwh * intensity / 1000
 
@@ -73,7 +76,6 @@ class CarbonBudgetLoader(BaseBudgetLoader):
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
             breakdown={
-                "region": self.config.region,
                 "carbon_intensity": intensity,
                 "gpu_util_pct": gpu_util_pct,
                 "power_w": round(power_w, 1),

@@ -40,7 +40,18 @@ class BudgetResult:
     breakdown: Dict[str, float] = field(default_factory=dict)
 
     def __add__(self, other: "BudgetResult") -> "BudgetResult":
-        """Combine two budget results (for multi-step pipelines)."""
+        """Combine two budget results (for multi-step pipelines).
+
+        For numeric breakdown keys, values are summed (e.g., energy_kwh,
+        carbon_kg, power_w). Keys unique to one side are preserved.
+        """
+        merged_breakdown: Dict[str, float] = {}
+        all_keys = set(self.breakdown.keys()) | set(other.breakdown.keys())
+        for key in all_keys:
+            val_a = self.breakdown.get(key, 0.0)
+            val_b = other.breakdown.get(key, 0.0)
+            merged_breakdown[key] = val_a + val_b
+
         return BudgetResult(
             cost_usd=self.cost_usd + other.cost_usd,
             cost_per_million_tokens=(
@@ -64,5 +75,5 @@ class BudgetResult:
             ),
             gpu_utilization=max(self.gpu_utilization, other.gpu_utilization),
             latency_slo_met=self.latency_slo_met and other.latency_slo_met,
-            breakdown={**self.breakdown, **other.breakdown},
+            breakdown=merged_breakdown,
         )
