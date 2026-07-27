@@ -187,13 +187,19 @@ def estimate_actual_throughput(
 
     Returns (achieved_tps, achieved_batch).
     """
+    # Auto-resolve model profile if model_name is in MODEL_PROFILES
+    profile = get_model_profile(
+        model_name, total_params_b, active_params_b, architecture
+    )
+    total_b, active_b, arch = profile
+
     peak = estimate_peak_throughput(
         gpu_type,
         model_name,
         quantization,
-        total_params_b,
-        active_params_b,
-        architecture,
+        total_b,
+        active_b,
+        arch,
         tensor_parallel,
         max_batch_size,
     )
@@ -202,8 +208,8 @@ def estimate_actual_throughput(
     # Arrival-limited throughput
     arrival_tps = lam * output_tokens
 
-    # Model-size-dependent saturation knee
-    lam_sat = get_saturation_knee(active_params_b)
+    # Model-size-dependent saturation knee (use resolved active_b)
+    lam_sat = get_saturation_knee(active_b)
 
     # Smooth saturation
     saturation_factor = 1.0 - math.exp(-lam / lam_sat)
@@ -211,11 +217,12 @@ def estimate_actual_throughput(
 
     achieved_tps = min(arrival_tps, saturated_tps)
 
-    # SLO enforcement
+    # SLO enforcement — only DECREASE throughput, never increase
     if latency_slo_ms and latency_slo_ms > 0 and achieved_tps > 0:
         est_latency_ms = (output_tokens / achieved_tps) * 1000
         if est_latency_ms > latency_slo_ms:
-            achieved_tps = output_tokens / (latency_slo_ms / 1000.0)
+            max_tps_for_slo = output_tokens / (latency_slo_ms / 1000.0)
+            achieved_tps = min(achieved_tps, max_tps_for_slo)
 
     # Achieved batch size
     if achieved_tps >= peak * 0.9:
