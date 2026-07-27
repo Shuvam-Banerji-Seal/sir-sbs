@@ -36,6 +36,13 @@ class RAGtuneController:
         cost_loader: Optional[Any] = None,
         cost_config: Optional[Dict[str, Any]] = None,
     ):
+        """
+        Args:
+            cost_loader: Optional BudgetLoader for cost estimation per iteration.
+                Must implement .calculate(context) -> BudgetResult.
+                When provided, estimates cost/energy/carbon after each rerank batch.
+            cost_config: Dict of config overrides passed to cost_loader.calculate().
+        """
         self.retriever = retriever
         self.reformulator = reformulator
         self.reranker = reranker

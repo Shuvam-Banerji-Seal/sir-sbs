@@ -14,18 +14,8 @@ from typing import Dict, Any, Optional
 
 from ragtune.budget.base import BaseBudgetLoader, BudgetConfig
 from ragtune.budget.factory import BudgetLoaderFactory
+from ragtune.budget.hardware import get_gpu_spec
 from ragtune.budget.result import BudgetResult
-
-# GPU specs — consolidated with vllm_budget.py
-# Source: NVIDIA official datasheets (2025-2026)
-GPU_SPECS = {
-    "H100-NVL-96GB": {"hourly_rate": 4.50, "tdp_w": 400},  # NVL: 350-400W
-    "A100-80GB": {"hourly_rate": 3.50, "tdp_w": 400},
-    "A100-40GB": {"hourly_rate": 2.90, "tdp_w": 400},
-    "V100-32GB": {"hourly_rate": 2.00, "tdp_w": 300},  # SXM2
-    "T4-16GB": {"hourly_rate": 0.80, "tdp_w": 70},
-    "L4-24GB": {"hourly_rate": 1.00, "tdp_w": 72},
-}
 
 
 @BudgetLoaderFactory.register("gpu_util")
@@ -46,16 +36,14 @@ class GPUUtilBudgetLoader(BaseBudgetLoader):
         batch_size = ctx.get("batch_size", 1)
         gpu_util_pct = ctx.get("gpu_util_pct", 50.0)
 
-        hw = GPU_SPECS.get(self.config.gpu_type, GPU_SPECS["A100-80GB"])
-        total_hourly = hw["hourly_rate"] * self.config.gpu_count
+        hw = get_gpu_spec(self.config.gpu_type)
+        total_hourly = hw.hourly_rate * self.config.gpu_count
 
         # Cost: just GPU time × rate
         cost = total_hourly * (runtime_s / 3600)
 
         # Energy at given utilization
-        power_w = (
-            hw["tdp_w"] * (0.25 + 0.75 * gpu_util_pct / 100) * self.config.gpu_count
-        )
+        power_w = hw.tdp_w * (0.25 + 0.75 * gpu_util_pct / 100) * self.config.gpu_count
         energy_kwh = power_w * runtime_s / 3600 / 1000
         carbon_kg = energy_kwh * self.config.carbon_intensity_g_per_kwh / 1000
 

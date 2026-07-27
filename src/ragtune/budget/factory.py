@@ -14,7 +14,6 @@ import yaml
 from typing import Dict, Any, Optional
 
 from ragtune.budget.base import BaseBudgetLoader, BudgetConfig
-from ragtune.budget.result import BudgetResult
 
 
 class BudgetLoaderFactory:

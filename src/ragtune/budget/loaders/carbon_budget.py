@@ -12,6 +12,7 @@ from typing import Dict, Any, Optional
 
 from ragtune.budget.base import BaseBudgetLoader, BudgetConfig
 from ragtune.budget.factory import BudgetLoaderFactory
+from ragtune.budget.hardware import get_gpu_spec
 from ragtune.budget.result import BudgetResult
 
 # Regional carbon intensity (g CO2e/kWh) — 2024 data
@@ -59,9 +60,8 @@ class CarbonBudgetLoader(BaseBudgetLoader):
             )
 
         # Estimate energy from GPU TDP (source: NVIDIA datasheets)
-        TDP_BY_GPU = {"A100-80GB": 400, "H100-NVL-96GB": 400, "A100-40GB": 400}
-        tdp_w = TDP_BY_GPU.get(self.config.gpu_type, 400)
-        power_w = tdp_w * (0.25 + 0.75 * gpu_util_pct / 100) * self.config.gpu_count
+        hw = get_gpu_spec(self.config.gpu_type)
+        power_w = hw.tdp_w * (0.25 + 0.75 * gpu_util_pct / 100) * self.config.gpu_count
         energy_kwh = power_w * runtime_s / 3600 / 1000
         carbon_kg = energy_kwh * intensity / 1000
 
