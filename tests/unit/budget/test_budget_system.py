@@ -41,7 +41,7 @@ class TestBudgetConfig:
     def test_default_config(self):
         cfg = BudgetConfig({})
         assert cfg.gpu_type == "A100-80GB"
-        assert cfg.gpu_hourly_rate == 3.50
+        assert cfg.gpu_hourly_rate == 0.0
 
     def test_custom_config(self):
         cfg = BudgetConfig({"gpu_type": "H100-NVL-96GB", "gpu_hourly_rate": 10.00})

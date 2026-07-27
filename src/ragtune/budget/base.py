@@ -29,7 +29,7 @@ class BudgetConfig:
     def __init__(self, config: Dict[str, Any]):
         self.gpu_type: str = config.get("gpu_type", "A100-80GB")
         self.gpu_count: int = config.get("gpu_count", 1)
-        self.gpu_hourly_rate: float = config.get("gpu_hourly_rate", 3.50)
+        self.gpu_hourly_rate: float = config.get("gpu_hourly_rate", 0.0)
         self.region: str = config.get("region", "us-east")
         self.electricity_cost_per_kwh: float = config.get(
             "electricity_cost_per_kwh", 0.12
