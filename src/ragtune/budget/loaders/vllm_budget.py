@@ -116,9 +116,15 @@ class VLLMBudgetLoader(BaseBudgetLoader):
         electricity_cost = energy_kwh * cfg.electricity_cost_per_kwh
 
         # ── Caching savings ──
-        # Configurable fraction — vLLM APC only reduces prefill phase.
+        # Two models:
+        # 1. Explicit cached_tokens (per-request): from context
+        # 2. Cache hit rate (statistical): from config, applied to prompt tokens
+        effective_cached = cached_tokens
+        if cfg.cache_hit_rate > 0 and effective_cached == 0:
+            # Apply cache hit rate to prompt tokens (statistical model)
+            effective_cached = int(prompt_tokens * cfg.cache_hit_rate)
         cache_saving = (
-            cached_tokens / max(total_tokens, 1)
+            effective_cached / max(total_tokens, 1)
         ) * cfg.cache_saving_fraction
 
         # ── SLO compliance ──
@@ -127,9 +133,16 @@ class VLLMBudgetLoader(BaseBudgetLoader):
             est_latency_ms = (completion_tokens / actual_tps) * 1000
             slo_met = est_latency_ms <= cfg.latency_slo_ms
 
+        # ── Per-component cost breakdown ──
+        # In vLLM, the dominant cost is GPU inference (generation).
+        # Embedding cost is negligible for self-hosted models.
+        # Reranking cost is separate (use reranking loader for API-based).
+        generation_cost = request_cost  # GPU inference IS the generation cost
+
         return BudgetResult(
             cost_usd=round(request_cost * (1 - cache_saving), 6),
             cost_per_million_tokens=round(cost_per_million * (1 - cache_saving), 4),
+            generation_cost_usd=round(generation_cost, 6),
             energy_kwh=round(energy_kwh, 8),
             carbon_kg=round(carbon_kg, 8),
             total_tokens=total_tokens,

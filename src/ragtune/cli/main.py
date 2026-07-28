@@ -487,7 +487,10 @@ if __name__ == "__main__":
 @app.command()
 def budget(
     budget_type: str = typer.Option(
-        "vllm", "--type", "-t", help="Budget loader type: vllm, token, gpu_util, carbon"
+        "vllm",
+        "--type",
+        "-t",
+        help="Budget loader type: vllm, token, gpu_util, carbon, embedding, reranking",
     ),
     prompt_tokens: int = typer.Option(
         512, "--prompt-tokens", help="Number of prompt/input tokens"
@@ -517,8 +520,31 @@ def budget(
     region: Optional[str] = typer.Option(
         None, "--region", help="Cloud region for carbon intensity"
     ),
+    pue: Optional[float] = typer.Option(
+        None, "--pue", help="Power Usage Effectiveness (default 1.15)"
+    ),
+    cache_hit_rate: Optional[float] = typer.Option(
+        None, "--cache-hit-rate", help="Cache hit rate (0.0-1.0)"
+    ),
+    embedding_model: Optional[str] = typer.Option(
+        None,
+        "--embedding-model",
+        help="Embedding model (e.g. openai/text-embedding-3-small)",
+    ),
+    reranking_model: Optional[str] = typer.Option(
+        None, "--reranking-model", help="Reranking model (e.g. cohere/rerank-v4-pro)"
+    ),
+    queries: int = typer.Option(
+        1, "--queries", help="Number of queries (for reranking)"
+    ),
+    docs_per_query: int = typer.Option(
+        10, "--docs", help="Docs per query (for reranking)"
+    ),
     config_path: Optional[Path] = typer.Option(
         None, "--config", "-c", help="Path to YAML budget config"
+    ),
+    suggest: bool = typer.Option(
+        False, "--suggest", "-s", help="Show optimization suggestions"
     ),
     verbose: bool = typer.Option(
         False, "--verbose", "-v", help="Show detailed breakdown"
@@ -532,6 +558,9 @@ def budget(
         ragtune budget --type vllm --gpu H100-NVL-96GB --model llama-3.1-8b --rps 25
         ragtune budget --type token --prompt-tokens 1024 --completion-tokens 512
         ragtune budget --type carbon --region eu-france --gpu A100-80GB
+        ragtune budget --type embedding --embedding-model openai/text-embedding-3-small
+        ragtune budget --type reranking --reranking-model cohere/rerank-v4-pro --queries 10
+        ragtune budget --suggest  # show optimization suggestions
     """
     from ragtune.budget.main import calculate_budget, budget_report
     from ragtune.budget.base import BudgetConfig
@@ -549,6 +578,19 @@ def budget(
     config_dict["latency_slo_ms"] = latency_slo_ms
     if region:
         config_dict["region"] = region
+    if pue is not None:
+        config_dict["pue"] = pue
+    if cache_hit_rate is not None:
+        config_dict["cache_hit_rate"] = cache_hit_rate
+
+    # Extra config for embedding/reranking models
+    extra = {}
+    if embedding_model:
+        extra["embedding_model"] = embedding_model
+    if reranking_model:
+        extra["reranking_model"] = reranking_model
+    if extra:
+        config_dict["extra"] = extra
 
     # Load from YAML if provided (CLI options override YAML values)
     if config_path and config_path.exists():
@@ -562,7 +604,26 @@ def budget(
                 config_dict[k] = v
 
     try:
+        # Build context for embedding/reranking loaders
+        context = {
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "cached_tokens": cached_tokens,
+        }
+        if budget_type == "embedding":
+            context["tokens"] = prompt_tokens  # embedding processes input tokens
+        elif budget_type == "reranking":
+            context["queries"] = queries
+            context["docs_per_query"] = docs_per_query
+
         # Generate report
+        result = calculate_budget(
+            budget_type=budget_type,
+            config=config_dict if config_dict else None,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            cached_tokens=cached_tokens,
+        )
         report = budget_report(
             budget_type=budget_type,
             config=config_dict if config_dict else None,
@@ -572,15 +633,18 @@ def budget(
         )
         console.print(report)
 
+        # Suggestions
+        if suggest:
+            from ragtune.budget.optimizer import (
+                suggest_optimizations,
+                format_suggestions,
+            )
+
+            suggestions = suggest_optimizations(result, config_dict)
+            console.print(format_suggestions(suggestions))
+
         # Verbose: show raw BudgetResult
         if verbose:
-            result = calculate_budget(
-                budget_type=budget_type,
-                config=config_dict if config_dict else None,
-                prompt_tokens=prompt_tokens,
-                completion_tokens=completion_tokens,
-                cached_tokens=cached_tokens,
-            )
             console.print(Panel(str(result), title="[bold]Raw BudgetResult[/bold]"))
 
     except Exception as e:

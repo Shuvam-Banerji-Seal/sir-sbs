@@ -81,6 +81,7 @@ class BudgetConfig:
 
         # ── Cache Configuration ──
         self.cache_saving_fraction: float = config.get("cache_saving_fraction", 0.50)
+        self.cache_hit_rate: float = config.get("cache_hit_rate", 0.0)
 
         # ── Token Estimation ──
         self.default_tokens_per_doc: int = config.get("default_tokens_per_doc", 512)

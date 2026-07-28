@@ -783,3 +783,242 @@ class TestBudgetMain:
                 budget_type, prompt_tokens=512, completion_tokens=256
             )
             assert "Budget Report" in report
+
+
+class TestEmbeddingBudgetLoader:
+    def test_basic(self):
+        loader = BudgetLoaderFactory.create("embedding")
+        r = loader.calculate({"tokens": 1000})
+        assert r.cost_usd > 0
+        assert r.embedding_cost_usd > 0
+        assert r.total_tokens == 1000
+
+    def test_zero_tokens(self):
+        loader = BudgetLoaderFactory.create("embedding")
+        r = loader.calculate({"tokens": 0})
+        assert r.cost_usd == 0.0
+
+    def test_custom_model(self):
+        loader = BudgetLoaderFactory.create(
+            "embedding",
+            config={"extra": {"embedding_model": "openai/text-embedding-3-large"}},
+        )
+        r = loader.calculate({"tokens": 1000})
+        assert r.breakdown["price_per_million"] == 0.13
+
+    def test_custom_price(self):
+        loader = BudgetLoaderFactory.create(
+            "embedding",
+            config={"extra": {"embedding_price_per_million": 0.05}},
+        )
+        r = loader.calculate({"tokens": 1000})
+        assert r.breakdown["price_per_million"] == 0.05
+        assert r.cost_usd == 0.00005
+
+
+class TestRerankingBudgetLoader:
+    def test_cohere_per_query(self):
+        loader = BudgetLoaderFactory.create("reranking")
+        r = loader.calculate({"queries": 10, "docs_per_query": 50})
+        assert r.cost_usd > 0
+        assert r.reranking_cost_usd > 0
+        assert r.breakdown["queries"] == 10.0
+
+    def test_voyage_per_token(self):
+        loader = BudgetLoaderFactory.create(
+            "reranking",
+            config={"extra": {"reranking_model": "voyage/rerank-2.5"}},
+        )
+        r = loader.calculate(
+            {
+                "queries": 10,
+                "docs_per_query": 50,
+                "query_tokens": 20,
+                "doc_tokens_per_doc": 200,
+            }
+        )
+        assert r.cost_usd > 0
+        # tokens = 10 × (20 + 50 × 200) = 100,200
+        assert r.total_tokens == 100200
+
+    def test_zero_queries(self):
+        loader = BudgetLoaderFactory.create("reranking")
+        r = loader.calculate({"queries": 0, "docs_per_query": 10})
+        assert r.cost_usd == 0.0
+
+
+class TestCostOptimizer:
+    def test_suggest_optimizations(self):
+        from ragtune.budget.optimizer import suggest_optimizations
+        from ragtune.budget.result import BudgetResult
+
+        result = BudgetResult(
+            cost_usd=0.01,
+            gpu_utilization=20.0,
+            throughput_tok_s=100,
+            cached_tokens=0,
+            prompt_tokens=1000,
+        )
+        suggestions = suggest_optimizations(result)
+        assert len(suggestions) > 0
+        categories = [s["category"] for s in suggestions]
+        assert "caching" in categories
+        assert "model_selection" in categories
+
+    def test_format_suggestions(self):
+        from ragtune.budget.optimizer import suggest_optimizations, format_suggestions
+        from ragtune.budget.result import BudgetResult
+
+        result = BudgetResult(
+            gpu_utilization=20.0, throughput_tok_s=100, prompt_tokens=1000
+        )
+        suggestions = suggest_optimizations(result)
+        formatted = format_suggestions(suggestions)
+        assert "Optimization Suggestions" in formatted
+
+    def test_no_suggestions_for_good_config(self):
+        from ragtune.budget.optimizer import suggest_optimizations
+        from ragtune.budget.result import BudgetResult
+
+        result = BudgetResult(
+            cost_usd=0.001,
+            gpu_utilization=80.0,
+            throughput_tok_s=5000,
+            cached_tokens=500,
+            prompt_tokens=1000,
+            latency_slo_met=True,
+        )
+        suggestions = suggest_optimizations(result)
+        # Should have fewer suggestions for a well-configured system
+        assert len(suggestions) <= 2
+
+
+class TestCostHistory:
+    def test_log_and_query(self):
+        import tempfile
+        import os
+        from ragtune.budget.history import CostHistoryLogger
+        from ragtune.budget.result import BudgetResult
+
+        with tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False) as f:
+            path = f.name
+
+        try:
+            logger = CostHistoryLogger(path)
+            result = BudgetResult(cost_usd=0.001, total_tokens=768)
+            logger.log(
+                "vllm", {"gpu_type": "A100-80GB"}, {"prompt_tokens": 512}, result
+            )
+
+            entries = logger.query(budget_type="vllm")
+            assert len(entries) == 1
+            assert entries[0]["budget_type"] == "vllm"
+            assert entries[0]["result"]["cost_usd"] == 0.001
+        finally:
+            os.unlink(path)
+
+    def test_summary(self):
+        import tempfile
+        import os
+        from ragtune.budget.history import CostHistoryLogger
+        from ragtune.budget.result import BudgetResult
+
+        with tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False) as f:
+            path = f.name
+
+        try:
+            logger = CostHistoryLogger(path)
+            for i in range(5):
+                result = BudgetResult(
+                    cost_usd=0.001 * (i + 1), total_tokens=100 * (i + 1)
+                )
+                logger.log("vllm", {}, {}, result)
+
+            summary = logger.summary(budget_type="vllm")
+            assert summary["count"] == 5
+            assert summary["total_cost_usd"] > 0
+            assert summary["total_tokens"] > 0
+        finally:
+            os.unlink(path)
+
+    def test_clear(self):
+        import tempfile
+        import os
+        from ragtune.budget.history import CostHistoryLogger
+        from ragtune.budget.result import BudgetResult
+
+        with tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False) as f:
+            path = f.name
+
+        try:
+            logger = CostHistoryLogger(path)
+            logger.log("vllm", {}, {}, BudgetResult(cost_usd=0.001))
+            assert len(logger.query()) == 1
+
+            logger.clear()
+            assert len(logger.query()) == 0
+            assert not os.path.exists(path)
+        finally:
+            if os.path.exists(path):
+                os.unlink(path)
+
+
+class TestCostAlerts:
+    def test_no_alerts_within_thresholds(self):
+        from ragtune.budget.alerts import check_alerts
+        from ragtune.budget.result import BudgetResult
+
+        result = BudgetResult(
+            cost_usd=0.001,
+            carbon_kg=0.0001,
+            energy_kwh=0.0001,
+            throughput_tok_s=1000,
+            gpu_utilization=50.0,
+            latency_slo_met=True,
+        )
+        alerts = check_alerts(
+            result,
+            {
+                "max_cost_usd": 0.01,
+                "max_carbon_kg": 0.001,
+            },
+        )
+        assert len(alerts) == 0
+
+    def test_cost_exceeds_threshold(self):
+        from ragtune.budget.alerts import check_alerts
+        from ragtune.budget.result import BudgetResult
+
+        result = BudgetResult(cost_usd=0.05)
+        alerts = check_alerts(result, {"max_cost_usd": 0.01})
+        assert len(alerts) == 1
+        assert alerts[0]["severity"] == "critical"
+
+    def test_slo_not_met(self):
+        from ragtune.budget.alerts import check_alerts
+        from ragtune.budget.result import BudgetResult
+
+        result = BudgetResult(cost_usd=0.001, latency_slo_met=False)
+        alerts = check_alerts(result)
+        slo_alerts = [a for a in alerts if "SLO" in a["message"]]
+        assert len(slo_alerts) == 1
+        assert slo_alerts[0]["severity"] == "critical"
+
+    def test_low_gpu_utilization(self):
+        from ragtune.budget.alerts import check_alerts
+        from ragtune.budget.result import BudgetResult
+
+        result = BudgetResult(gpu_utilization=10.0)
+        alerts = check_alerts(result, {"min_gpu_utilization": 30.0})
+        assert len(alerts) == 1
+        assert alerts[0]["severity"] == "info"
+
+    def test_format_alerts(self):
+        from ragtune.budget.alerts import check_alerts, format_alerts
+        from ragtune.budget.result import BudgetResult
+
+        result = BudgetResult(cost_usd=0.05)
+        alerts = check_alerts(result, {"max_cost_usd": 0.01})
+        formatted = format_alerts(alerts)
+        assert "Cost Alerts" in formatted
+        assert "CRITICAL" in formatted
