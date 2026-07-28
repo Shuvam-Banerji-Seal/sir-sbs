@@ -227,8 +227,10 @@ def estimate_actual_throughput(
     # Achieved batch size
     if achieved_tps >= peak * 0.9:
         achieved_batch = max_batch_size
-    else:
+    elif output_tokens > 0:
         achieved_batch = achieved_tps / output_tokens
+    else:
+        achieved_batch = 0.0
 
     return max(achieved_tps, 1.0), achieved_batch
 
