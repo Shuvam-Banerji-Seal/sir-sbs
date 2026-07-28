@@ -125,7 +125,8 @@ class TestBudgetConfig:
         assert cfg.gpu_count == 1
         assert cfg.region == "us-east"
         assert cfg.electricity_cost_per_kwh == 0.12
-        assert cfg.carbon_intensity_g_per_kwh == 400
+        assert cfg.carbon_intensity_g_per_kwh == 450.0
+        assert cfg.pue == 1.15
         assert cfg.model_name == "cross-encoder/ms-marco-MiniLM-L-6-v2"
         assert cfg.quantization == "fp16"
         assert cfg.max_batch_size == 256
@@ -133,6 +134,12 @@ class TestBudgetConfig:
         assert cfg.offered_rps == 10.0
         assert cfg.tensor_parallel == 1
         assert cfg.pipeline_parallel == 1
+        assert cfg.kv_overhead_per_token_s == 0.00014
+        assert cfg.cache_saving_fraction == 0.50
+        assert cfg.default_tokens_per_doc == 512
+        assert cfg.escalation_gap_threshold == 0.05
+        assert cfg.gpu_power_idle_fraction == 0.25
+        assert cfg.gpu_power_active_fraction == 0.75
 
     def test_to_dict_excludes_private(self):
         cfg = BudgetConfig({"gpu_type": "test"})
@@ -480,8 +487,8 @@ class TestGPUUtilBudgetLoader:
             }
         )
         # A100-80GB at 100% util: power = 400 * (0.25 + 0.75*1.0) = 400W
-        # energy = 400 * 3600 / 3600 / 1000 = 0.4 kWh
-        assert abs(r.energy_kwh - 0.4) < 0.01
+        # energy = 400 * 1.15 (PUE) * 3600 / 3600 / 1000 = 0.46 kWh
+        assert abs(r.energy_kwh - 0.46) < 0.01
 
     def test_carbon_calculation(self):
         loader = BudgetLoaderFactory.create(
@@ -493,8 +500,8 @@ class TestGPUUtilBudgetLoader:
                 "gpu_util_pct": 100.0,
             }
         )
-        # carbon = 0.4 kWh * 500 g/kWh / 1000 = 0.2 kg
-        assert abs(r.carbon_kg - 0.2) < 0.01
+        # carbon = 0.46 kWh (with PUE) * 500 g/kWh / 1000 = 0.23 kg
+        assert abs(r.carbon_kg - 0.23) < 0.01
 
     def test_all_gpu_types(self):
         """All GPU types should produce valid results."""
@@ -731,17 +738,17 @@ class TestThroughputModule:
         assert 14.0 <= vram <= 16.0
 
     def test_estimate_gpu_power(self):
-        from ragtune.budget.throughput import estimate_gpu_power
+        from ragtune.budget.hardware import estimate_gpu_power
 
         # A100-80GB at 50% util: 400 * (0.25 + 0.75*0.5) = 400 * 0.625 = 250W
         power = estimate_gpu_power("A100-80GB", 1, 0.5)
         assert abs(power - 250.0) < 1.0
 
     def test_estimate_gpu_power_multi_gpu(self):
-        from ragtune.budget.throughput import estimate_gpu_power
+        from ragtune.budget.hardware import estimate_gpu_power
 
-        power_single = estimate_gpu_power("A100-80GB", 1, 50.0)
-        power_double = estimate_gpu_power("A100-80GB", 2, 50.0)
+        power_single = estimate_gpu_power("A100-80GB", 1, 0.5)
+        power_double = estimate_gpu_power("A100-80GB", 2, 0.5)
         assert power_double == power_single * 2
 
 

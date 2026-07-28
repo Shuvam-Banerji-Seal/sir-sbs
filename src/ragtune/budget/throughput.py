@@ -123,6 +123,7 @@ def estimate_peak_throughput(
     architecture: str = "dense",
     tensor_parallel: int = 1,
     max_batch_size: int = 256,
+    kv_overhead_per_token_s: float = 0.00014,
 ) -> float:
     """Θ_max: peak output-token throughput at saturation.
 
@@ -143,6 +144,7 @@ def estimate_peak_throughput(
         quantization,
         tensor_parallel,
         max_batch_size,
+        kv_overhead_per_token_s,
     )
 
 
@@ -153,17 +155,21 @@ def _estimate_peak_throughput_fallback(
     quantization: str,
     tensor_parallel: int,
     max_batch_size: int,
+    kv_overhead_per_token_s: float = 0.00014,
 ) -> float:
-    """Calibrated analytical throughput for configs not in the empirical table."""
+    """Calibrated analytical throughput for configs not in the empirical table.
+
+    Uses configurable kv_overhead_per_token_s (default 0.00014s, calibrated
+    from arXiv 2606.11690 paper data: at batch=256 on H100 NVL with
+    Llama 3.1 8B, total step time ≈ 40ms vs weight_read_time ≈ 4ms,
+    giving per-token overhead ≈ (40-4)/256 ≈ 0.14ms).
+    """
     hw = get_gpu_spec(gpu_type)
     bpb = quant_bytes_per_param(quantization)
     mem_bw = hw.memory_bw_gb_s * tensor_parallel
 
     params_to_read = active_params_b * 1e9 * bpb
     weight_read_time_s = params_to_read / (mem_bw * (1024**3))
-
-    # Per-token overhead (attention + KV cache), calibrated from paper data
-    kv_overhead_per_token_s = 0.00014  # ~0.14ms per token
 
     max_batch = min(max_batch_size, 256)
     step_time_s = weight_read_time_s + max_batch * kv_overhead_per_token_s
@@ -182,6 +188,9 @@ def estimate_actual_throughput(
     architecture: str = "dense",
     tensor_parallel: int = 1,
     max_batch_size: int = 256,
+    kv_overhead_per_token_s: float = 0.00014,
+    lam_sat_fallback: float = 15.0,
+    peak_utilization_threshold: float = 0.9,
 ) -> Tuple[float, float]:
     """Θ_achieved(λ): throughput under offered load.
 
@@ -202,6 +211,7 @@ def estimate_actual_throughput(
         arch,
         tensor_parallel,
         max_batch_size,
+        kv_overhead_per_token_s,
     )
     lam = max(offered_rps, 1.0)
 
@@ -225,7 +235,7 @@ def estimate_actual_throughput(
             achieved_tps = min(achieved_tps, max_tps_for_slo)
 
     # Achieved batch size
-    if achieved_tps >= peak * 0.9:
+    if achieved_tps >= peak * peak_utilization_threshold:
         achieved_batch = max_batch_size
     elif output_tokens > 0:
         achieved_batch = achieved_tps / output_tokens
@@ -239,12 +249,3 @@ def estimate_weight_vram(total_params_b: float, quantization: str) -> float:
     """VRAM for model weights in GB."""
     bpb = quant_bytes_per_param(quantization)
     return total_params_b * 1e9 * bpb / (1024**3)
-
-
-def estimate_gpu_power(gpu_type: str, gpu_count: int, utilization: float) -> float:
-    """GPU power draw in watts, adjusted for utilization.
-
-    Linear model: power = TDP × (0.25 + 0.75 × util)
-    """
-    hw = get_gpu_spec(gpu_type)
-    return hw.tdp_w * (0.25 + 0.75 * utilization) * gpu_count

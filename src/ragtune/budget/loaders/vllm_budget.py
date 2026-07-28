@@ -14,11 +14,15 @@ from typing import Any, Dict, Optional
 
 from ragtune.budget.base import BaseBudgetLoader, BudgetConfig
 from ragtune.budget.factory import BudgetLoaderFactory
-from ragtune.budget.hardware import get_gpu_spec
+from ragtune.budget.hardware import (
+    get_gpu_spec,
+    estimate_gpu_power,
+    estimate_energy_kwh,
+    estimate_carbon_kg,
+)
 from ragtune.budget.result import BudgetResult
 from ragtune.budget.throughput import (
     estimate_actual_throughput,
-    estimate_gpu_power,
     estimate_peak_throughput,
     get_model_profile,
 )
@@ -31,8 +35,7 @@ class VLLMBudgetLoader(BaseBudgetLoader):
     Calculates cost per million tokens under offered load, accounting
     for GPU utilization, model architecture, quantization, and latency SLO.
 
-    Uses empirical Θ_max values from the paper's benchmark measurements
-    when available, with a calibrated analytical fallback for other configs.
+    All parameters flow from BudgetConfig — no hardcoded values.
     """
 
     def calculate(
@@ -67,8 +70,10 @@ class VLLMBudgetLoader(BaseBudgetLoader):
             architecture=arch,
             tensor_parallel=cfg.tensor_parallel,
             max_batch_size=cfg.max_batch_size,
+            kv_overhead_per_token_s=cfg.kv_overhead_per_token_s,
+            lam_sat_fallback=cfg.lam_sat_fallback,
+            peak_utilization_threshold=cfg.peak_utilization_threshold,
         )
-
         peak_tps = estimate_peak_throughput(
             cfg.gpu_type,
             cfg.model_name,
@@ -78,6 +83,7 @@ class VLLMBudgetLoader(BaseBudgetLoader):
             arch,
             cfg.tensor_parallel,
             cfg.max_batch_size,
+            cfg.kv_overhead_per_token_s,
         )
         gpu_util = actual_tps / peak_tps if peak_tps > 0 else 0.0
 
@@ -92,22 +98,28 @@ class VLLMBudgetLoader(BaseBudgetLoader):
         total_tokens = prompt_tokens + completion_tokens
         request_cost = cost_per_million * total_tokens / 1_000_000
 
-        # ── Energy ──
-        power_w = estimate_gpu_power(cfg.gpu_type, cfg.gpu_count, gpu_util / 100)
+        # ── Energy (with PUE) ──
+        power_w = estimate_gpu_power(
+            cfg.gpu_type,
+            cfg.gpu_count,
+            gpu_util,
+            cfg.gpu_power_idle_fraction,
+            cfg.gpu_power_active_fraction,
+        )
         request_time_s = total_tokens / max(actual_tps, 1)
-        energy_kwh = power_w * request_time_s / 3600 / 1000
+        energy_kwh = estimate_energy_kwh(power_w, request_time_s, cfg.pue)
 
         # ── Carbon ──
-        carbon_kg = energy_kwh * cfg.carbon_intensity_g_per_kwh / 1000
+        carbon_kg = estimate_carbon_kg(energy_kwh, cfg.carbon_intensity_g_per_kwh)
 
         # ── Electricity cost ──
         electricity_cost = energy_kwh * cfg.electricity_cost_per_kwh
 
         # ── Caching savings ──
-        # vLLM APC only reduces prefill phase, not decode.
-        # Prefill is ~40-60% of total compute; cache efficiency ~85-95%.
-        # Source: vLLM automatic-prefix-caching documentation
-        cache_saving = (cached_tokens / max(total_tokens, 1)) * 0.50
+        # Configurable fraction — vLLM APC only reduces prefill phase.
+        cache_saving = (
+            cached_tokens / max(total_tokens, 1)
+        ) * cfg.cache_saving_fraction
 
         # ── SLO compliance ──
         slo_met = True
@@ -135,5 +147,6 @@ class VLLMBudgetLoader(BaseBudgetLoader):
                 "power_w": round(power_w, 1),
                 "electricity_cost": round(electricity_cost, 8),
                 "cache_saving": round(cache_saving, 4),
+                "pue": cfg.pue,
             },
         )

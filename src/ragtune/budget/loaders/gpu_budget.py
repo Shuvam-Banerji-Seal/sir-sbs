@@ -14,7 +14,12 @@ from typing import Dict, Any, Optional
 
 from ragtune.budget.base import BaseBudgetLoader, BudgetConfig
 from ragtune.budget.factory import BudgetLoaderFactory
-from ragtune.budget.hardware import get_gpu_spec
+from ragtune.budget.hardware import (
+    get_gpu_spec,
+    estimate_gpu_power,
+    estimate_energy_kwh,
+    estimate_carbon_kg,
+)
 from ragtune.budget.result import BudgetResult
 
 
@@ -23,6 +28,7 @@ class GPUUtilBudgetLoader(BaseBudgetLoader):
     """Budget based on GPU runtime and utilization.
 
     Simple: cost = GPU_time × hourly_rate
+    All parameters flow from BudgetConfig.
     """
 
     def calculate(
@@ -33,19 +39,27 @@ class GPUUtilBudgetLoader(BaseBudgetLoader):
         runtime_s = ctx.get("runtime_s", 1.0)
         prompt_tokens = ctx.get("prompt_tokens", 512)
         completion_tokens = ctx.get("completion_tokens", 256)
-        batch_size = ctx.get("batch_size", 1)
         gpu_util_pct = ctx.get("gpu_util_pct", 50.0)
 
-        hw = get_gpu_spec(self.config.gpu_type)
-        total_hourly = hw.hourly_rate * self.config.gpu_count
+        cfg = self.config
+        hw = get_gpu_spec(cfg.gpu_type)
+        total_hourly = hw.hourly_rate * cfg.gpu_count
 
         # Cost: just GPU time × rate
         cost = total_hourly * (runtime_s / 3600)
 
-        # Energy at given utilization
-        power_w = hw.tdp_w * (0.25 + 0.75 * gpu_util_pct / 100) * self.config.gpu_count
-        energy_kwh = power_w * runtime_s / 3600 / 1000
-        carbon_kg = energy_kwh * self.config.carbon_intensity_g_per_kwh / 1000
+        # Energy (with PUE)
+        power_w = estimate_gpu_power(
+            cfg.gpu_type,
+            cfg.gpu_count,
+            gpu_util_pct / 100,
+            cfg.gpu_power_idle_fraction,
+            cfg.gpu_power_active_fraction,
+        )
+        energy_kwh = estimate_energy_kwh(power_w, runtime_s, cfg.pue)
+
+        # Carbon
+        carbon_kg = estimate_carbon_kg(energy_kwh, cfg.carbon_intensity_g_per_kwh)
 
         total_tokens = prompt_tokens + completion_tokens
 
@@ -64,5 +78,6 @@ class GPUUtilBudgetLoader(BaseBudgetLoader):
                 "runtime_s": runtime_s,
                 "gpu_util_pct": gpu_util_pct,
                 "power_w": round(power_w, 1),
+                "pue": cfg.pue,
             },
         )

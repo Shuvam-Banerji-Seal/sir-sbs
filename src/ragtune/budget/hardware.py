@@ -100,3 +100,63 @@ def get_gpu_spec(gpu_type: str) -> GPUSpec:
 def list_gpu_types():
     """List all available GPU types."""
     return list(GPU_SPECS.keys())
+
+
+def estimate_gpu_power(
+    gpu_type: str,
+    gpu_count: int,
+    utilization: float,
+    idle_fraction: float = 0.25,
+    active_fraction: float = 0.75,
+) -> float:
+    """GPU power draw in watts, adjusted for utilization.
+
+    Linear model: power = TDP × (idle_fraction + active_fraction × util) × gpu_count
+
+    Source: NVIDIA GPU power management documentation.
+    Idle power ≈ 25% of TDP (memory controllers, NVLink, PCIe).
+    Peak power = TDP at 100% utilization.
+
+    Args:
+        gpu_type: GPU type (e.g., "A100-80GB", "H100-NVL-96GB")
+        gpu_count: Number of GPUs
+        utilization: GPU utilization (0.0 to 1.0)
+        idle_fraction: Fraction of TDP at idle (default 0.25)
+        active_fraction: Fraction of TDP swing from idle to peak (default 0.75)
+    """
+    spec = get_gpu_spec(gpu_type)
+    return spec.tdp_w * (idle_fraction + active_fraction * utilization) * gpu_count
+
+
+def estimate_energy_kwh(
+    power_w: float,
+    time_s: float,
+    pue: float = 1.15,
+) -> float:
+    """Estimate energy consumption in kWh.
+
+    Includes PUE (Power Usage Effectiveness) to account for cooling,
+    power distribution, and other facility overhead.
+
+    Source: IPCC Tier 1 methodology, Google Cloud Carbon Footprint.
+    PUE default: 1.15 (hyperscale average, Uptime Institute 2024).
+
+    Args:
+        power_w: IT equipment power in watts
+        time_s: Duration in seconds
+        pue: Power Usage Effectiveness (>= 1.0)
+    """
+    return power_w * pue * time_s / 3600 / 1000
+
+
+def estimate_carbon_kg(
+    energy_kwh: float,
+    carbon_intensity_g_per_kwh: float,
+) -> float:
+    """Estimate carbon emissions in kg CO2e.
+
+    Formula: carbon_kg = energy_kwh × intensity_g_per_kwh / 1000
+
+    Source: IPCC Tier 1 methodology, GHG Protocol Scope 2.
+    """
+    return energy_kwh * carbon_intensity_g_per_kwh / 1000
