@@ -19,6 +19,7 @@ from ragtune.budget.result import BudgetResult
 from ragtune.budget.throughput import (
     estimate_actual_throughput,
     estimate_gpu_power,
+    estimate_peak_throughput,
     get_model_profile,
 )
 
@@ -67,7 +68,6 @@ class VLLMBudgetLoader(BaseBudgetLoader):
             tensor_parallel=cfg.tensor_parallel,
             max_batch_size=cfg.max_batch_size,
         )
-        from ragtune.budget.throughput import estimate_peak_throughput
 
         peak_tps = estimate_peak_throughput(
             cfg.gpu_type,

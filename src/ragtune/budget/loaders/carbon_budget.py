@@ -51,10 +51,10 @@ class CarbonBudgetLoader(BaseBudgetLoader):
         gpu_util_pct = ctx.get("gpu_util_pct", 50.0)
 
         # Carbon intensity from config or region lookup
-        # R4: Use None sentinel instead of magic number to avoid collision
+        # Use explicit flag instead of magic-number sentinel
         intensity = self.config.carbon_intensity_g_per_kwh
-        if self.config.region and intensity == 400:
-            # 400 is the BudgetConfig default — use region lookup when set
+        if not self.config._carbon_intensity_set and self.config.region:
+            # intensity not explicitly set — use region lookup
             intensity = REGIONAL_INTENSITY.get(
                 self.config.region, REGIONAL_INTENSITY["global-average"]
             )

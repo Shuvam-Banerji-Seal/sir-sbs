@@ -21,6 +21,13 @@ class BudgetResult:
     cost_usd: float = 0.0
     cost_per_million_tokens: float = 0.0
 
+    # Per-component cost breakdown (optional, for pipeline visibility)
+    embedding_cost_usd: float = 0.0
+    retrieval_cost_usd: float = 0.0
+    reranking_cost_usd: float = 0.0
+    reformulation_cost_usd: float = 0.0
+    generation_cost_usd: float = 0.0
+
     # Energy / environment
     energy_kwh: float = 0.0
     carbon_kg: float = 0.0
@@ -59,6 +66,12 @@ class BudgetResult:
                 / max(self.total_tokens + other.total_tokens, 1)
                 * 1_000_000
             ),
+            embedding_cost_usd=self.embedding_cost_usd + other.embedding_cost_usd,
+            retrieval_cost_usd=self.retrieval_cost_usd + other.retrieval_cost_usd,
+            reranking_cost_usd=self.reranking_cost_usd + other.reranking_cost_usd,
+            reformulation_cost_usd=self.reformulation_cost_usd
+            + other.reformulation_cost_usd,
+            generation_cost_usd=self.generation_cost_usd + other.generation_cost_usd,
             energy_kwh=self.energy_kwh + other.energy_kwh,
             carbon_kg=self.carbon_kg + other.carbon_kg,
             total_tokens=self.total_tokens + other.total_tokens,

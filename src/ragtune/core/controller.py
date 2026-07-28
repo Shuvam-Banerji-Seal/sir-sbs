@@ -184,18 +184,16 @@ class RAGtuneController:
                 # G. Cost estimation (optional)
                 if self.cost_loader is not None:
                     iteration += 1
+                    # Fetch batch items once (O(n)) instead of per-doc (O(n²))
+                    batch_items = pool.get_items(proposal.doc_ids)
                     batch_tokens = (
                         sum(
-                            pool.get_items([did])[0].metadata.get("token_count", 0)
-                            for did in proposal.doc_ids
-                            if did in {item.doc_id for item in pool.get_items([did])}
+                            item.metadata.get("token_count", 512)
+                            for item in batch_items
                         )
-                        if proposal.doc_ids
-                        else 0
+                        if batch_items
+                        else len(proposal.doc_ids) * 512
                     )
-                    batch_tokens = max(
-                        batch_tokens, len(proposal.doc_ids) * 512
-                    )  # fallback estimate
 
                     try:
                         cost_result = self.cost_loader.calculate(
