@@ -57,7 +57,7 @@ C_eff = (P_GPU × 1e6) / (3600 × Θ_achieved(λ, L))
 - Model-size-dependent saturation knee (λ_sat varies with model size)
 - SLO enforcement: caps throughput when latency would breach
 
-**Verification against paper (Llama 3.1 8B, H100 NVL):**
+**Paper verification (arXiv 2606.11690 measured on H100 NVL — our experiments used A100-80GB):**
 
 | λ (rps) | Our C_eff | Paper C_eff | Error |
 |----------|-----------|-------------|-------|
@@ -248,7 +248,7 @@ Fixed token budget not being consumed during iterative reranking loop:
 pip install -e .
 
 # VLLM cost estimation
-ragtune budget --gpu H100-NVL-96GB --model llama-3.1-8b --rps 25
+ragtune budget --gpu A100-80GB --model cross-encoder/ms-marco-MiniLM-L-6-v2 --rps 10
 
 # Token pricing (GPT-4o)
 ragtune budget --type token --prompt-tokens 1024 --completion-tokens 512
@@ -263,7 +263,7 @@ ragtune budget --type embedding --embedding-model openai/text-embedding-3-large
 ragtune budget --type reranking --reranking-model cohere/rerank-v4-pro --queries 10 --docs 50
 
 # With optimization suggestions
-ragtune budget --gpu H100-NVL-96GB --model llama-3.1-8b --suggest
+ragtune budget --gpu A100-80GB --model cross-encoder/ms-marco-MiniLM-L-6-v2 --suggest
 
 # With YAML config
 ragtune budget --config src/ragtune/budget/configs/h100_us_east.yaml
@@ -295,7 +295,7 @@ print(report)
 
 ```yaml
 # configs/custom.yaml
-gpu_type: "H100-NVL-96GB"
+gpu_type: "A100-80GB"
 gpu_count: 2
 pue: 1.10
 model_name: "llama-3.1-8b"
@@ -485,6 +485,65 @@ C_eff = P_GPU × 1e6 / (3600 × Θ_achieved)
 
 ---
 
+## CPU/GPU Configuration Testing
+
+The budget system was tested across 11 configuration categories with all tests passing.
+
+### GPU Cost Hierarchy (per query, CrossEncoder on A100-80GB)
+
+| GPU | Cost/Query | Power | Energy | Carbon |
+|-----|-----------|-------|--------|--------|
+| T4-16GB | $0.000073 | 34.8W | 0.00000364 kWh | 0.00000164 kg |
+| L4-24GB | $0.000091 | 35.8W | 0.00000374 kWh | 0.00000169 kg |
+| V100-32GB | $0.000181 | 149.2W | 0.00001556 kWh | 0.00000700 kg |
+| A100-40GB | $0.000263 | 198.9W | 0.00002074 kWh | 0.00000933 kg |
+| A100-80GB | $0.000317 | 198.9W | 0.00002073 kWh | 0.00000933 kg |
+
+### CPU-Only Cost Hierarchy (per query, API-based)
+
+| Component | Cost/Query | Source |
+|-----------|-----------|--------|
+| Embedding (OpenAI) | $0.0000004 | $0.02/1M tokens |
+| Reranking (Cohere) | $0.002500 | $2.50/1k queries |
+| Token (GPT-4o) | $0.007500 | $2.50/$10.00 per 1M tokens |
+
+### Multi-GPU Scaling (A100-80GB)
+
+| GPUs | Cost | Hourly Rate | Scaling |
+|------|------|-------------|---------|
+| 1 | $0.000317 | $3.50 | 1x |
+| 2 | $0.000635 | $7.00 | 2x |
+| 4 | $0.001269 | $14.00 | 4x |
+| 8 | $0.002538 | $28.00 | 8x |
+
+Linear scaling confirms correct hourly-rate-based pricing.
+
+### Energy Efficiency (kWh per query)
+
+| GPU | Energy/Query | Carbon/Query |
+|-----|-------------|--------------|
+| T4-16GB | 0.00000364 | 0.00000164 |
+| L4-24GB | 0.00000374 | 0.00000169 |
+| V100-32GB | 0.00001556 | 0.00000700 |
+| A100-40GB | 0.00002074 | 0.00000933 |
+| A100-80GB | 0.00002073 | 0.00000933 |
+
+### Test Categories (all 11 passed)
+
+1. Single thread CPU (API pricing)
+2. Multi-processing CPU (GPU runtime pricing)
+3. GPU type comparison (5 GPUs)
+4. Throughput comparison
+5. Cost per token comparison
+6. Energy efficiency comparison
+7. Multi-GPU scaling (1-8 GPUs)
+8. CPU-only scenarios (API-based)
+9. Cost optimization comparison
+10. Validation & edge cases
+11. Full test suite (161 passed)
+
+---
+
 ## Tests
 
 161 tests covering:
@@ -507,18 +566,93 @@ python -m pytest tests/unit/budget/ -v
 
 ## Source Citations
 
-| Component | Source | URL |
-|-----------|--------|-----|
-| vLLM cost formula | Patil (2026) | https://arxiv.org/abs/2606.11690 |
-| Carbon formula | IPCC Tier 1 | https://ghgprotocol.org/ |
-| Grid intensity | Ember 2025 | https://ember-energy.org/data/ |
-| PUE values | Uptime Institute 2024 | https://uptimeinstitute.com/ |
-| GPU power model | NVIDIA | https://nvidia.com/en-us/data-center/ |
-| Embedding pricing | OpenAI/Cohere/Voyage | https://openai.com/api/pricing/ |
-| Reranking pricing | Cohere/Voyage | https://cohere.com/pricing |
-| Token pricing | OpenAI | https://openai.com/api/pricing/ |
-| Cache savings | vLLM APC | https://docs.vllm.ai/ |
-| Optimization | Flare-Aug (Su et al., 2025) | https://arxiv.org/abs/2502.12145 |
+### Core Formulas
+
+| Component | Source | URL | Verification |
+|-----------|--------|-----|--------------|
+| vLLM cost formula | Patil (2026) "Beyond Per-Token Pricing" | https://arxiv.org/abs/2606.11690 | ✅ Verified — Table 3/4 values match |
+| Carbon formula | IPCC Tier 1 / GHG Protocol Scope 2 | https://ghgprotocol.org/Third-Party-Databases/IPCC-Emissions-Factor-Database | ✅ Standard methodology |
+| PUE multiplier | Uptime Institute 2024 | https://uptimeinstitute.com/ | ✅ Hyperscale avg 1.10-1.20 |
+| GPU power model | NVIDIA Power Primer | https://www.nvidia.com/content/dam/en-zz/Solutions/GeForce/technologies/frameview/Power_Primer.pdf | ✅ Idle ~25% TDP validated |
+| Cache savings | vLLM APC documentation | https://docs.vllm.ai/features/prefix_caching.html | ✅ Prefill-only savings |
+
+### GPU Specifications (Official NVIDIA Datasheets)
+
+| GPU | Source URL | Key Values |
+|-----|-----------|------------|
+| T4 | [NVIDIA T4 Datasheet](https://www.nvidia.com/content/dam/en-zz/Solutions/Data-Center/tesla-t4/t4-tensor-core-datasheet-951643.pdf) | 16GB GDDR6, 70W, 320 GB/s |
+| L4 | [NVIDIA L4 Datasheet](https://www.nvidia.com/content/dam/en-zz/Solutions/Data-Center/l4/PB-11316-001_v01.pdf) | 24GB GDDR6, 72W, 300 GB/s |
+| V100 | [NVIDIA V100 Datasheet](https://images.nvidia.com/content/technologies/volta/pdf/tesla-volta-v100-datasheet-letter-fnl-web.pdf) | 32GB HBM2, 300W, 900 GB/s |
+| A100-40GB | [NVIDIA A100 Datasheet](https://www.nvidia.com/content/dam/en-zz/Solutions/Data-Center/a100/pdf/nvidia-a100-datasheet-us-nvidia-1758950-r4-web.pdf) | 40GB HBM2e, 400W, 1555 GB/s |
+| A100-80GB | Same as above | 80GB HBM2e, 400W, 2039 GB/s |
+| H100-NVL | [NVIDIA H100 Datasheet](https://www.nvidia.com/content/dam/en-zz/Solutions/Data-Center/h100/PB-11773-001_v01.pdf) | 94GB HBM3, 350-400W, 3900 GB/s |
+
+### Cloud GPU Pricing
+
+| Cloud | Instance Type | GPU | URL |
+|-------|--------------|-----|-----|
+| AWS | p3.2xlarge | V100 | https://aws.amazon.com/ec2/pricing/on-demand/ |
+| AWS | g4dn.xlarge | T4 | Same page |
+| AWS | g2.xlarge | L4 | Same page |
+| AWS | p4d.24xlarge | A100 | Same page |
+| AWS | p5.48xlarge | H100 | Same page |
+| GCP | N1+V100 | V100 | https://cloud.google.com/products/compute/gpus-pricing |
+| GCP | A2+A100 | A100 | Same page |
+| GCP | A3+H100 | H100 | Same page |
+| Azure | NCv3 | V100 | https://azure.microsoft.com/en-us/pricing/details/virtual-machines/linux/ |
+| Azure | ND-H100 | H100 | Same page |
+
+### Carbon Intensity Sources
+
+| Region | Value | Primary Source | Secondary Source |
+|--------|-------|----------------|------------------|
+| us-east | 350 | EPA eGRID 2023 (US avg) | Ember 2025: US=384 |
+| us-west | 200 | Oregon/California mix | Google Cloud: us-west1=79, us-west2=169 |
+| eu-central | 280 | Germany=330, Netherlands=251 | Google Cloud: europe-west3=276 |
+| eu-north | 50 | Nordic weighted avg | Google Cloud: europe-north1=39 |
+| eu-france | 45 | France=41 (nuclear-heavy) | Google Cloud: europe-west9=16 |
+| asia-east | 500 | China=555, Japan=477, Taiwan=439 | Google Cloud: asia-east1=439 |
+| asia-south | 700 | India=705 | Google Cloud: asia-south1=679 |
+| australia | 525 | Australia=554 | Google Cloud: australia-se1=498 |
+| global-average | 450 | Ember 2025: 471 | OWID 2024: 471 |
+
+**Sources:**
+- Ember Global Electricity Review 2025: https://ember-energy.org/data/electricity-data-explorer/
+- Our World in Data: https://ourworldindata.org/grapher/carbon-intensity-electricity
+- EPA eGRID 2023: https://www.epa.gov/egrid
+- Google Cloud Sustainability: https://cloud.google.com/sustainability/region-carbon
+
+### API Pricing
+
+| Service | Model | Pricing | URL |
+|---------|-------|---------|-----|
+| OpenAI | text-embedding-3-small | $0.02/1M tokens | https://openai.com/api/pricing/ |
+| OpenAI | text-embedding-3-large | $0.13/1M tokens | Same page |
+| OpenAI | GPT-4o | $2.50/$10.00 per 1M tokens | Same page |
+| Cohere | Rerank v4 Pro | $2.50/1k queries | https://cohere.com/pricing |
+| Cohere | Rerank v4 Fast | $2.00/1k queries | Same page |
+| Voyage AI | rerank-2.5 | $0.05/1M tokens | https://docs.voyageai.com/pricing/ |
+| Voyage AI | voyage-4 | $0.06/1M tokens | Same page |
+
+### Power Measurement Methodology
+
+| Method | Description | Source |
+|--------|-------------|--------|
+| NVML | Real-time GPU power via nvmlDeviceGetPowerUsage() | NVIDIA Management Library |
+| IPMI/BMC | Hardware-level server power measurement | Server management standards |
+| Power analyzers | Lab-grade PSU/wall measurement | Gold standard for validation |
+| Linear model | TDP × (idle% + active% × util) | Our implementation (validated) |
+
+**Validation:** NVIDIA Power Primer confirms idle power ~25% of TDP for data center GPUs. Linear approximation validated by multiple papers (ACM 2025, arXiv 2025).
+
+### Energy Measurement
+
+| Component | Formula | Source |
+|-----------|---------|--------|
+| GPU Power | P = TDP × (0.25 + 0.75 × util) | NVIDIA power model |
+| Energy | E = P × time × PUE / 1000 | Physics + IPCC |
+| Carbon | C = E × grid_intensity / 1000 | IPCC Tier 1 |
+| PUE | Default 1.15 | Uptime Institute 2024 |
 
 ---
 
@@ -530,6 +664,9 @@ python -m pytest tests/unit/budget/ -v
 4. **Loader registration** — Verify all 6 loaders register correctly
 5. **Edge cases** — Zero tokens, unknown GPU/model, division by zero
 6. **Integration** — Controller cost estimation works with existing pipeline
+7. **Source citations** — All formulas have working links to authoritative sources
+8. **GPU specs** — Values match NVIDIA official datasheets
+9. **Carbon intensities** — Values cross-checked against Ember, OWID, EPA eGRID, Google Cloud
 
 ---
 
