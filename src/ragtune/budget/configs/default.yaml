@@ -86,3 +86,14 @@ gpu_power_active_fraction: 0.75 # GPU active power swing — NVIDIA power model
 
 # ── Reranking Configuration ────────────────────────────────────────────────
 # reranking_model: "cohere/rerank-v4-pro"           # Uncomment to set
+
+# ── CPU Configuration ──────────────────────────────────────────────────────
+# For CPU-only or mixed CPU/GPU workloads
+# Source: Intel/AMD product specifications
+cpu_type: ""                     # CPU model (e.g., "Intel Xeon Platinum 8375C")
+cpu_cores: 0                     # Physical cores (0 = not configured)
+cpu_threads: 0                   # Logical threads (0 = not configured)
+cpu_hourly_rate: 0.0             # CPU hourly rate ($/hr, 0 = not configured)
+cpu_tdp_w: 0                     # CPU TDP in watts (0 = not configured)
+num_processes: 1                 # Number of parallel processes
+num_threads_per_process: 1       # Threads per process

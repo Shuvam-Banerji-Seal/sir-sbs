@@ -160,3 +160,51 @@ def estimate_carbon_kg(
     Source: IPCC Tier 1 methodology, GHG Protocol Scope 2.
     """
     return energy_kwh * carbon_intensity_g_per_kwh / 1000
+
+
+# ── CPU Power Model ──────────────────────────────────────────────────────
+# CPU power is typically 10-50% of TDP depending on workload.
+# For LLM inference (memory-bound), CPU utilization is low.
+
+CPU_IDLE_FRACTION = 0.15  # CPU idle power ~15% of TDP
+CPU_ACTIVE_FRACTION = 0.85  # CPU active power swing
+
+
+def estimate_cpu_power(
+    cpu_tdp_w: int,
+    num_cores: int = 1,
+    num_threads: int = 1,
+    utilization: float = 0.5,
+) -> float:
+    """Estimate CPU power draw in watts.
+
+    Args:
+        cpu_tdp_w: CPU TDP in watts
+        num_cores: Number of physical cores used
+        num_threads: Number of logical threads used
+        utilization: CPU utilization (0.0 to 1.0)
+    """
+    if cpu_tdp_w <= 0:
+        return 0.0
+    # Scale TDP by core/thread usage (conservative: use cores, not threads)
+    effective_tdp = cpu_tdp_w * min(
+        num_cores, 1.0
+    )  # Normalize to 1 core if unspecified
+    return effective_tdp * (CPU_IDLE_FRACTION + CPU_ACTIVE_FRACTION * utilization)
+
+
+def estimate_total_system_power(
+    gpu_power_w: float = 0.0,
+    cpu_power_w: float = 0.0,
+    memory_power_w: float = 0.0,
+    network_power_w: float = 0.0,
+) -> float:
+    """Estimate total system power in watts.
+
+    Args:
+        gpu_power_w: GPU power draw
+        cpu_power_w: CPU power draw
+        memory_power_w: Memory power draw
+        network_power_w: Network power draw
+    """
+    return gpu_power_w + cpu_power_w + memory_power_w + network_power_w

@@ -99,6 +99,27 @@ class BudgetConfig:
             "gpu_power_active_fraction", 0.75
         )
 
+        # ── CPU Configuration ──
+        self.cpu_type: str = config.get(
+            "cpu_type", ""
+        )  # e.g., "Intel Xeon Platinum 8375C"
+        self.cpu_cores: int = config.get(
+            "cpu_cores", 0
+        )  # Physical cores (0 = not configured)
+        self.cpu_threads: int = config.get(
+            "cpu_threads", 0
+        )  # Logical threads (0 = not configured)
+        self.cpu_hourly_rate: float = config.get("cpu_hourly_rate", 0.0)  # $/hr per CPU
+        self.cpu_tdp_w: int = config.get(
+            "cpu_tdp_w", 0
+        )  # CPU TDP in watts (0 = not configured)
+        self.num_processes: int = config.get(
+            "num_processes", 1
+        )  # Number of parallel processes
+        self.num_threads_per_process: int = config.get(
+            "num_threads_per_process", 1
+        )  # Threads per process
+
         # ── Extra (loader-specific) ──
         self.extra: Dict[str, Any] = config.get("extra", {})
 
@@ -143,6 +164,16 @@ class BudgetConfig:
         if not (0.0 <= self.gpu_power_active_fraction <= 1.0):
             errors.append(
                 f"gpu_power_active_fraction must be in [0, 1], got {self.gpu_power_active_fraction}"
+            )
+        if self.cpu_cores < 0:
+            errors.append(f"cpu_cores must be >= 0, got {self.cpu_cores}")
+        if self.cpu_threads < 0:
+            errors.append(f"cpu_threads must be >= 0, got {self.cpu_threads}")
+        if self.num_processes < 1:
+            errors.append(f"num_processes must be >= 1, got {self.num_processes}")
+        if self.num_threads_per_process < 1:
+            errors.append(
+                f"num_threads_per_process must be >= 1, got {self.num_threads_per_process}"
             )
         return errors
 
