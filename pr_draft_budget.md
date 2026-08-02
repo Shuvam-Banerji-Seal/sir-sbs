@@ -23,7 +23,7 @@ This PR adds a **config-driven budget estimation system** that answers all of th
 budget/
 ├── hardware.py          # GPUSpec dataclass, power/energy/carbon functions
 ├── throughput.py        # Θ_max lookup table, saturation model
-├── base.py              # BudgetConfig (25 fields), BaseBudgetLoader ABC
+├── base.py              # BudgetConfig (34 fields), BaseBudgetLoader ABC
 ├── factory.py           # BudgetLoaderFactory registry
 ├── result.py            # BudgetResult (15 fields, per-component costs)
 ├── main.py              # calculate_budget(), budget_report()
@@ -163,7 +163,7 @@ alerts = check_alerts(result, {
 
 ### 10. Config-Driven Architecture
 
-**All 25 BudgetConfig fields are configurable:**
+**All 34 BudgetConfig fields are configurable:**
 
 | Field | Default | Source |
 |-------|---------|--------|
@@ -173,9 +173,45 @@ alerts = check_alerts(result, {
 | `kv_overhead_per_token_s` | 0.00014 | arXiv 2606.11690 |
 | `cache_saving_fraction` | 0.50 | vLLM APC docs |
 | `gpu_power_idle_fraction` | 0.25 | NVIDIA power model |
+| `cpu_type` | "" | User config (e.g., Intel Xeon) |
+| `cpu_cores` | 0 | User config (0 = not configured) |
+| `cpu_threads` | 0 | User config (0 = not configured) |
+| `cpu_hourly_rate` | 0.0 | User config (0 = not configured) |
+| `cpu_tdp_w` | 0 | User config (0 = not configured) |
+| `num_processes` | 1 | User config (parallel processes) |
+| `num_threads_per_process` | 1 | User config (threads per process) |
 | ... | ... | ... |
 
 **No hardcoded values in Python code.** Every value flows through `BudgetConfig`.
+
+### 13. CPU Configuration Support
+
+Added CPU-related fields for single-thread, multi-thread, and multi-process workloads:
+
+```yaml
+cpu_type: "Intel Xeon Platinum 8375C"  # CPU model
+cpu_cores: 16                          # Physical cores
+cpu_threads: 32                        # Logical threads
+cpu_hourly_rate: 0.50                  # $/hr per CPU
+cpu_tdp_w: 250                         # CPU TDP in watts
+num_processes: 4                       # Parallel processes
+num_threads_per_process: 8             # Threads per process
+```
+
+New CPU power model in `hardware.py`:
+- `estimate_cpu_power(cpu_tdp_w, cores, threads, util)` — CPU power estimation
+- `estimate_total_system_power(gpu, cpu, memory, network)` — Total system power
+- CPU idle fraction: 15% of TDP, active fraction: 85%
+
+**CPU power validation (Intel Xeon 100-300W TDP, 50% util, PUE 1.15):**
+
+| Config | Power | Energy/query | Carbon/query |
+|--------|-------|-------------|--------------|
+| 1 core | 57.5W | 0.00001837 kWh | 0.00000827 kg |
+| 4 cores | 86.2W | 0.00002755 kWh | 0.00001240 kg |
+| 8 cores | 115.0W | 0.00003674 kWh | 0.00001653 kg |
+| 16 cores | 143.8W | 0.00004592 kWh | 0.00002066 kg |
+| 32 cores | 172.5W | 0.00005510 kWh | 0.00002480 kg |
 
 ### 11. Controller Integration
 
@@ -199,14 +235,14 @@ Fixed token budget not being consumed during iterative reranking loop:
 
 ---
 
-## Files Changed (28 files, +4,763/-162 lines)
+## Files Changed (29 files, +5,100/-162 lines)
 
 ### New Files (21)
 
 | File | Lines | Purpose |
 |------|:-----:|---------|
 | `src/ragtune/budget/__init__.py` | 19 | Package exports |
-| `src/ragtune/budget/base.py` | 133 | BudgetConfig (25 fields), BaseBudgetLoader ABC |
+| `src/ragtune/budget/base.py` | 133 | BudgetConfig (34 fields), BaseBudgetLoader ABC |
 | `src/ragtune/budget/factory.py` | 88 | BudgetLoaderFactory registry |
 | `src/ragtune/budget/hardware.py` | 162 | GPUSpec dataclass, power/energy/carbon functions |
 | `src/ragtune/budget/throughput.py` | 261 | Θ_max lookup, saturation model |
@@ -308,7 +344,7 @@ carbon_intensity_g_per_kwh: 450
 
 ## How the config works
 
-### BudgetConfig (25 fields)
+### BudgetConfig (34 fields)
 
 All parameters that affect cost/energy/carbon estimation are configurable:
 
@@ -670,5 +706,5 @@ python -m pytest tests/unit/budget/ -v
 
 ---
 
-**Files changed:** 28 files, +4,763/-162 lines
+**Files changed:** 29 files, +5,100/-162 lines
 **Authored by:** Shuvam Banerji Seal
