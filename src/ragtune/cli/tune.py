@@ -205,12 +205,14 @@ def _load_dataset(cfg: object) -> object:
     if dataset_cfg.irds_id:
         irds_id = dataset_cfg.irds_id
     else:
+        # ir-datasets BEIR entries have no /test sub-path; the test split
+        # is the only split and is accessed directly from the top-level ID.
         _IRDS_ALIASES = {
-            "trec-covid": "irds:beir/trec-covid/test",
-            "nfcorpus": "irds:beir/nfcorpus/test",
-            "scifact": "irds:beir/scifact/test",
-            "fiqa": "irds:beir/fiqa/test",
-            "arguana": "irds:beir/arguana/test",
+            "trec-covid": "irds:beir/trec-covid",
+            "nfcorpus":   "irds:beir/nfcorpus",
+            "scifact":    "irds:beir/scifact",
+            "fiqa":       "irds:beir/fiqa",
+            "arguana":    "irds:beir/arguana",
         }
         irds_id = _IRDS_ALIASES.get(dataset_cfg.name)
         if irds_id is None:
