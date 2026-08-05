@@ -2,8 +2,8 @@ name: trec-covid-mobo-v1
 
 dataset:
   name: trec-covid
-  # BEIR TREC-COVID has a single test split; no /test suffix in the irds ID.
-  irds_id: irds:beir/trec-covid
+  split: test
+  irds_id: irds:beir/trec-covid/test
 
 # Trial budget
 n_trials: 300

@@ -37,7 +37,6 @@ benchmarks = [
 tuning = [
     "optuna>=3.6",
     "numpy>=1.24",
-    "ir-datasets>=0.5",
 ]
 
 [project.scripts]
