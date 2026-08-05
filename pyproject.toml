@@ -34,6 +34,10 @@ benchmarks = [
     "datasets>=2.0.0",
     "huggingface_hub>=0.20.0",
 ]
+tuning = [
+    "optuna>=3.6",
+    "numpy>=1.24",
+]
 
 [project.scripts]
 ragtune = "ragtune.cli.main:main"

@@ -368,6 +368,10 @@ def index(
         traceback.print_exc()
         raise typer.Exit(code=1)
 
+from ragtune.cli.tune import tune_app
+app.add_typer(tune_app, name="tune")
+
+
 def main():
     app()
 
