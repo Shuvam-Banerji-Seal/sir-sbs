@@ -59,8 +59,13 @@ def ps(msg):
 import re as _re
 
 
-def sanitize_query(text):
-    """Strip LaTeX, math symbols, unicode, and special chars for PyTerrier."""
+def sanitize_query(text, max_chars: int = 2000):
+    """Strip LaTeX, math symbols, unicode, and special chars for PyTerrier.
+
+    The max_chars cap (default 2000 characters) guards against pathological
+    queries that could break PyTerrier's TerrierQL parser. It is configurable
+    via the runner's 'max_query_chars' config key.
+    """
     if not text:
         return ""
     text = _re.sub(r"\$[^$]*\$", "", text)
@@ -79,7 +84,7 @@ def sanitize_query(text):
     )
     text = text.encode("ascii", "ignore").decode("ascii")
     text = _re.sub(r"\s+", " ", text).strip()
-    return text[:2000]
+    return text[:max_chars]
 
 
 # ── Configuration (config-driven, nothing hardcoded) ────────────────────────
@@ -103,6 +108,7 @@ DEFAULT_CONFIG = {
     "corpus_fields": None,
     "corpus_sep": "\n",  # field separator; "\n\n" matches Rahul's exact format
     "min_relevance": 1,  # min qrel relevance; 1 = positive-only (Rahul's PR #20)
+    "max_query_chars": 2000,  # sanitize_query cap; guards PyTerrier TerrierQL
 }
 
 
@@ -297,6 +303,7 @@ def run_scenario(
     qrels: Dict[str, Dict[str, int]],
     eval_ks: List[int],
     report_rerank: bool,
+    max_query_chars: int = 2000,
 ) -> Dict[str, Any]:
     """Run a controller over all queries, return metrics + telemetry."""
     ps(f"  Running [{name}]...")
@@ -308,7 +315,7 @@ def run_scenario(
     for qid, qtext in queries.items():
         try:
             q_start = time.time()
-            out = controller.run(sanitize_query(qtext))
+            out = controller.run(sanitize_query(qtext, max_chars=max_query_chars))
             latencies.append((time.time() - q_start) * 1000)
             docs_reranked.append(out.final_budget_state.get("rerank_docs", 0))
             results[qid] = {d.id: 1.0 / (i + 1) for i, d in enumerate(out.documents)}
@@ -431,7 +438,13 @@ def main():
 
         for name, controller in scenarios:
             row = run_scenario(
-                name, controller, queries, qrels, EVAL_KS, cfg["report_rerank"]
+                name,
+                controller,
+                queries,
+                qrels,
+                EVAL_KS,
+                cfg["report_rerank"],
+                max_query_chars=cfg.get("max_query_chars", 2000),
             )
             row.update({"benchmark": BENCHMARK, "subset": subset})
             all_rows.append(row)
