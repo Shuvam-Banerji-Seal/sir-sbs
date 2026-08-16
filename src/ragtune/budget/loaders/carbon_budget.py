@@ -8,11 +8,13 @@ Estimates carbon footprint of LLM inference based on:
 Uses data from IPCC Tier 1 methodology, Ember 2025, EPA eGRID.
 
 Formula (IPCC Tier 1):
-    carbon_kg = energy_kwh × PUE × carbon_intensity / 1000
+    energy_kwh = power_w × time_s × PUE / 3600 / 1000
+    carbon_kg = energy_kwh × carbon_intensity / 1000
 
 Where:
-    energy_kwh = power_w × time_s / 3600 / 1000
-    PUE = Power Usage Effectiveness (default 1.15)
+    power_w = GPU power draw (watts)
+    PUE = Power Usage Effectiveness (default 1.15), applied inside
+          estimate_energy_kwh()
     carbon_intensity = g CO2e per kWh (grid-specific)
 """
 
@@ -84,7 +86,7 @@ class CarbonBudgetLoader(BaseBudgetLoader):
         )
         energy_kwh = estimate_energy_kwh(power_w, runtime_s, cfg.pue)
 
-        # Carbon: energy × PUE × intensity / 1000
+        # Carbon: energy_kwh (already includes PUE) × intensity / 1000
         carbon_kg = estimate_carbon_kg(energy_kwh, intensity)
 
         total_tokens = prompt_tokens + completion_tokens

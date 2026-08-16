@@ -175,21 +175,34 @@ def estimate_cpu_power(
     num_cores: int = 1,
     num_threads: int = 1,
     utilization: float = 0.5,
+    total_cores: int = 0,
 ) -> float:
     """Estimate CPU power draw in watts.
 
     Args:
         cpu_tdp_w: CPU TDP in watts
-        num_cores: Number of physical cores used
-        num_threads: Number of logical threads used
-        utilization: CPU utilization (0.0 to 1.0)
+        num_cores: Number of physical cores actively used, OR a fraction
+            (0.0-1.0) of the CPU being used. If total_cores is provided and
+            num_cores is a count, power scales by num_cores/total_cores.
+        num_threads: Number of logical threads used (informational; cores drive
+            the scaling since SMT threads share the same physical core).
+        utilization: CPU utilization (0.0 to 1.0).
+        total_cores: Total physical cores on the CPU. If given and > 0,
+            num_cores is treated as a count and scaled to a fraction.
     """
     if cpu_tdp_w <= 0:
         return 0.0
-    # Scale TDP by core/thread usage (conservative: use cores, not threads)
-    effective_tdp = cpu_tdp_w * min(
-        num_cores, 1.0
-    )  # Normalize to 1 core if unspecified
+    # Resolve the active-core fraction:
+    #   - fraction form (0.0-1.0): use directly
+    #   - count form (>=1) with total_cores: num_cores / total_cores
+    #   - count form without total_cores: treat as full CPU (no scaling)
+    if 0.0 < num_cores <= 1.0:
+        core_fraction = num_cores
+    elif total_cores and total_cores > 0:
+        core_fraction = min(num_cores / total_cores, 1.0)
+    else:
+        core_fraction = 1.0
+    effective_tdp = cpu_tdp_w * core_fraction
     return effective_tdp * (CPU_IDLE_FRACTION + CPU_ACTIVE_FRACTION * utilization)
 
 

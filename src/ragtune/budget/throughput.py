@@ -75,8 +75,14 @@ LAM_SAT_TABLE = {
 }
 
 
-def get_saturation_knee(active_params_b: float) -> float:
-    """Get λ_sat for a given model size via logarithmic interpolation."""
+def get_saturation_knee(active_params_b: float, fallback: float = 15.0) -> float:
+    """Get λ_sat for a given model size via logarithmic interpolation.
+
+    Args:
+        active_params_b: Active parameters in billions.
+        fallback: Value returned when no table entry or interpolation applies
+            (e.g. empty table). Wired from BudgetConfig.lam_sat_fallback.
+    """
     if active_params_b in LAM_SAT_TABLE:
         return LAM_SAT_TABLE[active_params_b]
 
@@ -94,7 +100,7 @@ def get_saturation_knee(active_params_b: float) -> float:
             )
             return LAM_SAT_TABLE[lo] + t * (LAM_SAT_TABLE[hi] - LAM_SAT_TABLE[lo])
 
-    return 15.0  # fallback
+    return fallback
 
 
 def get_model_profile(
@@ -219,7 +225,7 @@ def estimate_actual_throughput(
     arrival_tps = lam * output_tokens
 
     # Model-size-dependent saturation knee (use resolved active_b)
-    lam_sat = get_saturation_knee(active_b)
+    lam_sat = get_saturation_knee(active_b, fallback=lam_sat_fallback)
 
     # Smooth saturation
     saturation_factor = 1.0 - math.exp(-lam / lam_sat)

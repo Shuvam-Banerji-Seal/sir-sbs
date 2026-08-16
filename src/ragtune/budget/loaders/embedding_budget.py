@@ -59,7 +59,12 @@ class EmbeddingBudgetLoader(BaseBudgetLoader):
     ) -> BudgetResult:
         ctx = context or {}
 
-        tokens = ctx.get("tokens", 0)
+        # 'tokens' is the primary input; fall back to prompt_tokens when
+        # callers pass the standard RAGtune context (e.g. the CLI passes
+        # prompt_tokens/completion_tokens, not 'tokens').
+        tokens = ctx.get("tokens")
+        if tokens is None:
+            tokens = ctx.get("prompt_tokens", 0)
         prompt_tokens = ctx.get("prompt_tokens", tokens)
         completion_tokens = ctx.get("completion_tokens", 0)
 

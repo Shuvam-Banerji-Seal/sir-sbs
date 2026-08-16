@@ -191,16 +191,16 @@ class TestBudgetLoaderFactory:
         assert loader.config.gpu_type == "H100-NVL-96GB"
 
     def test_create_with_both_config_and_yaml(self):
-        """YAML provides base config; config dict is ignored when config_path is set."""
+        """YAML provides base config; config dict overrides YAML values."""
         path = "src/ragtune/budget/configs/h100_us_east.yaml"
         loader = BudgetLoaderFactory.create(
             "vllm",
             config={"gpu_hourly_rate": 10.0},
             config_path=path,
         )
-        # config_path takes precedence — config dict is ignored
+        # YAML provides the base (gpu_type from H100 config), config overrides
         assert loader.config.gpu_type == "H100-NVL-96GB"
-        assert loader.config.gpu_hourly_rate == 6.98  # from YAML, not overridden
+        assert loader.config.gpu_hourly_rate == 10.0  # config overrides YAML
 
 
 class TestVLLMBudgetLoader:

@@ -12,12 +12,12 @@ RAGtune's budget system estimates LLM inference cost, energy consumption, and ca
 
 ```
 budget/
-├── base.py              # BudgetConfig (25 fields), BaseBudgetLoader ABC
+├── base.py              # BudgetConfig (34 fields), BaseBudgetLoader ABC
 ├── factory.py           # BudgetLoaderFactory registry
 ├── hardware.py          # GPUSpec dataclass, power/energy/carbon functions
 ├── throughput.py        # Θ_max lookup, saturation model, power estimation
 ├── main.py              # calculate_budget(), budget_report()
-├── result.py            # BudgetResult (15 fields, per-component costs)
+├── result.py            # BudgetResult (17 fields, per-component costs)
 ├── optimizer.py         # Cost optimization suggestions
 ├── history.py           # JSONL cost logging
 ├── alerts.py            # Threshold-based alerts
@@ -200,7 +200,7 @@ ragtune budget --type reranking --reranking-model voyage/rerank-2.5 --queries 10
 
 ### BudgetConfig Fields
 
-All 25 fields are configurable via YAML, environment variables, or CLI:
+All 34 fields are configurable via YAML, environment variables, or CLI:
 
 | Field | Default | Description | Source |
 |-------|---------|-------------|--------|
@@ -357,7 +357,8 @@ alerts = check_alerts(result, {
 Optional cost estimation per iteration in the RAGtuneController:
 
 ```python
-from ragtune.budget import VLLMBudgetLoader, BudgetConfig
+from ragtune.budget.base import BudgetConfig
+from ragtune.budget.loaders.vllm_budget import VLLMBudgetLoader
 
 loader = VLLMBudgetLoader(BudgetConfig({
     "gpu_type": "H100-NVL-96GB",

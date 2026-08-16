@@ -53,12 +53,18 @@ class BudgetLoaderFactory:
         Returns:
             BaseBudgetLoader instance
         """
-        # Load config from YAML if path given
+        # Load config from YAML if path given, then overlay explicit config
+        # dict values on top (config overrides YAML, matching the docstring).
         budget_config = None
         if config_path:
             with open(config_path) as f:
                 yaml_cfg = yaml.safe_load(f)
-                budget_config = BudgetConfig(yaml_cfg)
+                if config:
+                    merged = dict(yaml_cfg)
+                    merged.update(config)
+                    budget_config = BudgetConfig(merged)
+                else:
+                    budget_config = BudgetConfig(yaml_cfg)
         elif config:
             budget_config = BudgetConfig(config)
 
