@@ -58,9 +58,18 @@ def budget_report(
 ) -> str:
     """Format a human-readable budget report."""
     r = calculate_budget(budget_type, config_path, config, **context)
+    return format_report(r, budget_type)
+
+
+def format_report(r: BudgetResult, budget_type: str = "") -> str:
+    """Format an already-computed BudgetResult as a human-readable report.
+
+    Separated from budget_report() so callers that already hold a
+    BudgetResult (e.g. the CLI) don't compute the budget twice.
+    """
     lines = [
         "=" * 55,
-        f"  Budget Report ({budget_type})",
+        f"  Budget Report ({budget_type})" if budget_type else "  Budget Report",
         "=" * 55,
         f"  Cost:            ${r.cost_usd:.6f}",
         f"  $/M tokens:      ${r.cost_per_million_tokens:.4f}",

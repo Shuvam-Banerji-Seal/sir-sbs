@@ -476,14 +476,6 @@ def index(
         raise typer.Exit(code=1)
 
 
-def main():
-    app()
-
-
-if __name__ == "__main__":
-    main()
-
-
 @app.command()
 def budget(
     budget_type: str = typer.Option(
@@ -562,7 +554,7 @@ def budget(
         ragtune budget --type reranking --reranking-model cohere/rerank-v4-pro --queries 10
         ragtune budget --suggest  # show optimization suggestions
     """
-    from ragtune.budget.main import calculate_budget, budget_report
+    from ragtune.budget.main import calculate_budget, format_report
     from ragtune.budget.base import BudgetConfig
 
     # Build config from CLI options
@@ -616,7 +608,7 @@ def budget(
             context["queries"] = queries
             context["docs_per_query"] = docs_per_query
 
-        # Generate report
+        # Compute once, format once (budget_report would recompute)
         result = calculate_budget(
             budget_type=budget_type,
             config=config_dict if config_dict else None,
@@ -624,14 +616,7 @@ def budget(
             completion_tokens=completion_tokens,
             cached_tokens=cached_tokens,
         )
-        report = budget_report(
-            budget_type=budget_type,
-            config=config_dict if config_dict else None,
-            prompt_tokens=prompt_tokens,
-            completion_tokens=completion_tokens,
-            cached_tokens=cached_tokens,
-        )
-        console.print(report)
+        console.print(format_report(result, budget_type))
 
         # Suggestions
         if suggest:
@@ -650,3 +635,11 @@ def budget(
     except Exception as e:
         console.print(f"[bold red]Error:[/bold red] {e}")
         raise typer.Exit(code=1)
+
+
+def main():
+    app()
+
+
+if __name__ == "__main__":
+    main()
