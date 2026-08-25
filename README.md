@@ -55,11 +55,12 @@ Edit `ragtune_config.yaml` to define your budget and components.
 ```yaml
 pipeline:
   budget:
-    tokens: 4000
-    latency_ms: 1500
+    limits:
+      tokens: 4000
+      latency_ms: 1500
   components:
     retriever:
-      type: "bm25"
+      type: "pyterrier"
     reranker:
       type: "cross-encoder"
 ```
@@ -84,9 +85,9 @@ Whether you prefer the readability of **YAML** or the machine-compatibility of *
 # ragtune_config.yaml
 pipeline:
   name: "My Pipeline"
-  budget: { tokens: 2000 }
+  budget: { limits: { tokens: 2000 } }
   components:
-    retriever: { type: "bm25" }
+    retriever: { type: "pyterrier" }
 ```
 
 **JSON Configuration:**
@@ -94,9 +95,9 @@ pipeline:
 {
   "pipeline": {
     "name": "My Pipeline",
-    "budget": { "tokens": 2000 },
+    "budget": { "limits": { "tokens": 2000 } },
     "components": {
-      "retriever": { "type": "bm25" }
+      "retriever": { "type": "pyterrier" }
     }
   }
 }
@@ -115,7 +116,7 @@ The visualization renders a box-and-arrow diagram representing the pipeline:
 │  ┌────────────┐    ┌────────────┐    ┌────────────┐    ┌────────────┐│
 │  │ RETRIEVER  │───▶│REFORMULATOR│───▶│  RERANKER  │───▶│ ASSEMBLER  ││
 │  ├────────────┤    ├────────────┤    ├────────────┤    ├────────────┤│
-│  │ type: bm25 │    │ type: llm  │    │ type: cross│    │ type: greed││
+│  │type: pyterrier│ │ type: llm  │    │ type: cross│    │ type: greed││
 │  └────────────┘    └────────────┘    └────────────┘    └────────────┘│
 │                                              ▲                       │
 │                    ┌────────────┐    ┌───────┴────┐                  │
