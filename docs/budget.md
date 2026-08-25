@@ -4,7 +4,7 @@
 
 RAGtune's budget system estimates LLM inference cost, energy consumption, and carbon footprint. It provides 6 budget loaders covering different cost models, from GPU-based inference to API pricing.
 
-**Key principle:** All parameters flow through `BudgetConfig` — no hardcoded values in Python code. Every value is configurable via YAML, environment variables, or CLI options.
+**Key principle:** All parameters flow through `BudgetConfig`, no hardcoded values in Python code. Every value is configurable via YAML, environment variables, or CLI options.
 
 ---
 
@@ -112,11 +112,11 @@ ragtune budget --type gpu_util --gpu A100-80GB
 
 **Formula:**
 ```
-carbon_kg = energy_kwh × PUE × carbon_intensity / 1000
+carbon_kg = energy_kwh × carbon_intensity / 1000
 ```
 
 Where:
-- `energy_kwh = power_w × time_s / 3600 / 1000`
+- `energy_kwh = power_w × PUE × time_s / 3600 / 1000` (PUE applied once, here)
 - `PUE` = Power Usage Effectiveness (default 1.15)
 - `carbon_intensity` = g CO2e per kWh (grid-specific)
 
@@ -160,9 +160,14 @@ cost = tokens × price_per_token
 |-------|-----------------|------------|
 | openai/text-embedding-3-small | $0.02 | 1536 |
 | openai/text-embedding-3-large | $0.13 | 3072 |
+| openai/text-embedding-ada-002 | $0.10 | 1536 |
 | cohere/embed-v4 | $0.12 | 1024 |
+| cohere/embed-v3 | $0.10 | 1024 |
 | voyage/voyage-4 | $0.06 | 1024 |
 | voyage/voyage-4-lite | $0.02 | 512 |
+| voyage/voyage-4-large | $0.12 | 1024 |
+| mistral/mistral-embed | $0.10 | 1024 |
+| google/gemini-embedding-001 | $0.15 | 768 |
 
 **Usage:**
 ```bash
@@ -185,6 +190,7 @@ ragtune budget --type embedding --embedding-model openai/text-embedding-3-large
 |-------|---------|----------|
 | cohere/rerank-v4-pro | $2.50/1k queries | 100 |
 | cohere/rerank-v4-fast | $2.00/1k queries | 100 |
+| cohere/rerank-v3.5 | $2.00/1k queries | 100 |
 | voyage/rerank-2.5 | $0.05/1M tokens | 100 |
 | voyage/rerank-2.5-lite | $0.02/1M tokens | 100 |
 
@@ -230,6 +236,13 @@ All 34 fields are configurable via YAML, environment variables, or CLI:
 | `escalation_gap_threshold` | 0.05 | Strategy escalation trigger | Calibrated |
 | `gpu_power_idle_fraction` | 0.25 | GPU idle power fraction | NVIDIA power model |
 | `gpu_power_active_fraction` | 0.75 | GPU active power swing | NVIDIA power model |
+| `cpu_type` | "" | CPU model name (e.g., Intel Xeon 8375C) | User config |
+| `cpu_cores` | 0 | Physical CPU cores (0 = not configured) | User config |
+| `cpu_threads` | 0 | Logical CPU threads (0 = not configured) | User config |
+| `cpu_hourly_rate` | 0.0 | CPU hourly rate ($/hr) | User config |
+| `cpu_tdp_w` | 0 | CPU TDP in watts (0 = not configured) | Vendor datasheet |
+| `num_processes` | 1 | Parallel processes for CPU workloads | User config |
+| `num_threads_per_process` | 1 | Threads per process for CPU workloads | User config |
 
 ### YAML Configuration
 
@@ -409,7 +422,7 @@ The vLLM loader matches arXiv 2606.11690 within ≤5.3%:
 
 ## Tests
 
-161 tests covering:
+103 tests covering:
 - BudgetResult arithmetic and breakdown merge
 - All 6 loader types with edge cases
 - Hardware specs (frozen dataclass, fallback, FP8 detection)
