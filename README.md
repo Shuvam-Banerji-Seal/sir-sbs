@@ -54,6 +54,12 @@ ragtune init
 Edit `ragtune_config.yaml` to define your budget and components.
 ```yaml
 pipeline:
+  data:
+    collection_path: "./data/corpus.json"
+    collection_format: "json"
+  index:
+    type: "sparse"
+    index_path: "./index"
   budget:
     limits:
       tokens: 4000
@@ -61,11 +67,18 @@ pipeline:
   components:
     retriever:
       type: "pyterrier"
+      params: { index_path: "./index" }
     reranker:
       type: "cross-encoder"
 ```
 
-### 3. Run the Pipeline
+### 3. Build the Index
+The retriever reads a pre-built index, so build it once before the first run:
+```bash
+ragtune index ragtune_config.yaml
+```
+
+### 4. Run the Pipeline
 Execute the pipeline instantly from the terminal.
 ```bash
 ragtune run ragtune_config.yaml --query "How does Active Learning optimize RAG?"
